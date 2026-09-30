@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>スパ2X キャラ戦 チーム管理＆OBSツール</title>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<!-- HTML5 Drag and Drop サポート用ライブラリ (SortableJS) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+<!-- 外部CSSファイルの読み込み -->
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="admin-panel">
+    <details open>
+      <summary class="admin-summary">
+        <div class="admin-summary-header" onclick="event.stopPropagation();">
+          <span>▼ ⚙️ 管理操作パネル</span>
+          <a href="https://github.com/counterspell-nakamu/ssf2x-team-battle" target="_blank" class="manual-link" onclick="event.stopPropagation();">📖 使い方 / Manual</a>
+        </div>
+
+        <div class="room-header-controls" onclick="event.stopPropagation();">
+          <span>🏠 現在のルーム: <strong id="currentRoomDisplay" style="color:#ff9f1c; font-size:1.1em;">default</strong></span>
+          <input type="text" id="roomInput" placeholder="部屋名" style="width:140px; padding:3px 6px;">
+          <button class="btn btn-warning" style="padding:4px 10px;" onclick="changeRoom()">部屋移動</button>
+        </div>
+      </summary>
+
+      <div class="admin-body">
+        <div class="grid-2">
+          <div>
+            <h3>1. プレイヤー選択（本日の参加者）</h3>
+            <div id="masterChecklist" class="member-checklist"></div>
+            
+            <div style="display:flex; gap:5px; margin-bottom:10px;">
+              <input type="text" id="newPlayerInput" placeholder="新しいプレイヤー名を追加" style="flex:1;" onkeydown="handleNewPlayerKeyDown(event)">
+              <button class="btn" onclick="addNewPlayer()">名簿に追加</button>
+            </div>
+
+            <div class="mode-select" style="margin-bottom:8px;">
+              <b>⚖️ チーム分けモード:</b><br>
+              <label><input type="radio" name="splitMode" value="normal" checked> 通常（半々で自動ランダム）</label><br>
+              <label><input type="radio" name="splitMode" value="handicap1_p1"> 1人(1P) vs 残り全員(2P)</label><br>
+              <label><input type="radio" name="splitMode" value="handicap1_p2"> 残り全員(1P) vs 1人(2P)</label>
+            </div>
+
+            <button class="btn btn-success" style="width:100%;" onclick="makeRandomTeams()">チェックした人を1P / 2Pチームに自動振り分け</button>
+          </div>
+
+          <div>
+            <h3>2. オーダー＆キャラ設定</h3>
+            <div style="margin-bottom:8px; display:flex; align-items:center; gap:8px; background:#111118; padding:6px 8px; border-radius:6px;">
+              <label for="slotCountSelect" style="font-weight:bold; font-size:0.9em;">🎯 対戦枠数 (キャラ数):</label>
+              <select id="slotCountSelect" onchange="changeSlotCount(this.value)" style="padding:3px 6px;"></select>
+            </div>
+
+            <div class="mode-select">
+              <label><input type="radio" name="orderMode" value="manual" checked onclick="updateModalLabels()"> 手動設定（完全自由）</label><br>
+              <label><input type="radio" name="orderMode" value="fullRandom" onclick="updateModalLabels()"> <span id="labelFullRandom">1〜16人目シャッフル（全員完全ランダム）</span></label><br>
+              <label><input type="radio" name="orderMode" value="bossFixed" onclick="updateModalLabels()"> <span id="labelBossFixed">1〜15人目シャッフル ＋ 大将(16人目)固定</span></label><br>
+              <label><input type="radio" name="orderMode" value="counterPick" onclick="updateModalLabels()"> <span id="labelCounterPick">先鋒申告 ＋ 2〜16人目被せ</span></label>
+            </div>
+            
+            <div class="mode-select" style="background:#20202d; margin-bottom:8px;">
+              <b>📱 端末別入力モード設定:</b><br>
+              <label><input type="radio" name="deviceRole" value="pc_all" checked onclick="setDeviceRole('pc_all')"> 💻 PC1台で両チーム分を入力する</label><br>
+              <label><input type="radio" name="deviceRole" value="p1_only" onclick="setDeviceRole('p1_only')"> 🔴 この端末は 1Pチームのみ 操作＆閲覧</label><br>
+              <label><input type="radio" name="deviceRole" value="p2_only" onclick="setDeviceRole('p2_only')"> 🔵 この端末は 2Pチームのみ 操作＆閲覧</label>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <button id="btnOpenP1" class="btn btn-success" onclick="openOrderModal('1')">🔴 1Pチーム オーダー設定</button>
+              <button id="btnOpenP2" class="btn btn-success" onclick="openOrderModal('2')">🔵 2Pチーム オーダー設定</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </details>
+  </div>
+
+  <div class="obs-display">
+    <div class="team-column">
+      <div class="team-title bench-header">1P 待機 (ベンチ)</div>
+      <div id="team1-bench-display"></div>
+    </div>
+
+    <div class="team-column">
+      <div class="team-title p1-header">1P TEAM (対戦枠)</div>
+      <div id="team1-match-display"></div>
+    </div>
+
+    <div class="team-column">
+      <div class="team-title p2-header">2P TEAM (対戦枠)</div>
+      <div id="team2-match-display"></div>
+    </div>
+
+    <div class="team-column">
+      <div class="team-title bench-header">2P 待機 (ベンチ)</div>
+      <div id="team2-bench-display"></div>
+    </div>
+  </div>
+
+  <div id="orderModal" class="modal">
+    <div class="modal-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+        <h3 id="modalTitle" style="margin:0;">オーダー設定</h3>
+        <div style="display:flex; gap:6px;">
+          <button class="btn" style="background:#4a5568;" onclick="autoFillGroupedPlayers()">👥 プレイヤー連続初期配置</button>
+          <button id="btnFillAll" class="btn btn-purple" onclick="fillFullRandomModal()">テスト用全部埋めるだけ</button>
+        </div>
+      </div>
+      <div id="modalOrderRows"></div>
+      <br>
+      <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+        <button class="btn btn-success" onclick="saveOrderModal()">設定完了</button>
+        <button class="btn btn-danger" onclick="closeOrderModal()">キャンセル</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="charPalette" class="char-palette"></div>
+
+  <!-- 外部JavaScriptファイルの読み込み -->
+  <script src="script.js"></script>
+</body>
+</html>
