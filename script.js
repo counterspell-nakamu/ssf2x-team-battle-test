@@ -1,3 +1,7 @@
+// ==========================================
+// スパ2X キャラ戦 チーム管理＆OBSツール - script.js (分割版・修正済み)
+// ==========================================
+
 const firebaseConfig = {
   apiKey: "AIzaSyDMgiXpRGBLJofwxWEh0pG5b3FQ7yZNLK8",
   authDomain: "sf2x-app.firebaseapp.com",
@@ -11,7 +15,15 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const urlParams = new URLSearchParams(window.location.search);
-let currentRoom = urlParams.get('room') || 'default';
+const roomParam = urlParams.get('room');
+
+// room パラメータが無い場合は「ローカルモード」で起動する。
+// ローカルモードは Firebase を一切経由せず、このブラウザタブの中だけで完結する。
+// 友人に配る用の通常URL → ローカルモード（お互いに影響しない）
+// 自分用の ?room=好きな名前 付きURL → 今まで通りFirebase同期モード
+let isLocalMode = !roomParam;
+let currentRoom = roomParam || null;
+const LOCAL_STORAGE_STATE_KEY = 'sf2x_local_state';
 
 const baseChars = ["リュウ","ケン","本田","春麗","ブランカ","ザンギエフ","ガイル","ダルシム","ホーク","キャミィ","フェイロン","ディージェイ","バイソン","バルログ","サガット","ベガ"];
 const allCharacters = baseChars.map((name, i) => ({
@@ -35,35 +47,68 @@ let currentModalTeam = '1';
 let sortableInstance = null;
 let activeCharTargetInput = null;
 
+// appState の形が古いデータや空データでも壊れないように整える共通処理
+// （Firebaseモード／ローカルモードの両方から呼ばれる）
+function normalizeAppState() {
+  if (!appState.slotCount) appState.slotCount = 16;
+  if (!appState.masterPlayers || appState.masterPlayers.length === 0) {
+    appState.masterPlayers = [...defaultPlayers];
+  }
+  if (Array.isArray(appState.team1Orders)) {
+    appState.team1Orders = { match: appState.team1Orders, bench: [] };
+  }
+  if (Array.isArray(appState.team2Orders)) {
+    appState.team2Orders = { match: appState.team2Orders, bench: [] };
+  }
+}
+
+// ローカルモード用: 前回リロード前の状態を localStorage から復元する
+function loadLocalState() {
+  try {
+    const saved = localStorage.getItem(LOCAL_STORAGE_STATE_KEY);
+    if (saved) {
+      appState = JSON.parse(saved);
+    }
+  } catch (e) {}
+  normalizeAppState();
+}
+
+// ローカルモード用: 部屋機能に関するUI（現在のルーム表示・部屋移動）を隠す
+function hideRoomUIForLocalMode() {
+  const roomControls = document.querySelector('.room-header-controls');
+  if (roomControls) roomControls.style.display = 'none';
+}
+
 window.onload = function() {
   initSlotSelectOptions();
   initCharPalette();
-  
-  document.getElementById("currentRoomDisplay").textContent = currentRoom;
-  document.getElementById("roomInput").value = currentRoom;
 
-  db.ref(`sf2x_rooms/${currentRoom}`).on('value', (snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-      appState = data;
-      if (!appState.slotCount) appState.slotCount = 16;
-      if (!appState.masterPlayers || appState.masterPlayers.length === 0) {
-        appState.masterPlayers = [...defaultPlayers];
+  if (isLocalMode) {
+    hideRoomUIForLocalMode();
+    loadLocalState();
+    const slotSelect = document.getElementById("slotCountSelect");
+    if (slotSelect) slotSelect.value = appState.slotCount;
+    updateRuleOptionLabels();
+    renderMasterChecklist();
+    renderDisplay();
+  } else {
+    document.getElementById("currentRoomDisplay").textContent = currentRoom;
+    document.getElementById("roomInput").value = currentRoom;
+
+    db.ref(`sf2x_rooms/${currentRoom}`).on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        appState = data;
+        normalizeAppState();
+        document.getElementById("slotCountSelect").value = appState.slotCount;
+        updateRuleOptionLabels();
+        renderMasterChecklist();
+        renderDisplay();
+      } else {
+        syncToFirebase();
       }
-      if (Array.isArray(appState.team1Orders)) {
-        appState.team1Orders = { match: appState.team1Orders, bench: [] };
-      }
-      if (Array.isArray(appState.team2Orders)) {
-        appState.team2Orders = { match: appState.team2Orders, bench: [] };
-      }
-      document.getElementById("slotCountSelect").value = appState.slotCount;
-      updateRuleOptionLabels();
-      renderMasterChecklist();
-      renderDisplay();
-    } else {
-      syncToFirebase();
-    }
-  });
+    });
+  }
 
   document.addEventListener('click', (e) => {
     const palette = document.getElementById('charPalette');
@@ -86,6 +131,15 @@ function initSlotSelectOptions() {
 }
 
 function syncToFirebase() {
+  if (isLocalMode) {
+    // Firebaseを経由せず、このタブの中だけで保存・再描画する
+    try {
+      localStorage.setItem(LOCAL_STORAGE_STATE_KEY, JSON.stringify(appState));
+    } catch (e) {}
+    renderMasterChecklist();
+    renderDisplay();
+    return;
+  }
   db.ref(`sf2x_rooms/${currentRoom}`).set(appState);
 }
 
@@ -176,7 +230,7 @@ function createOrdersEmpty() {
 }
 
 function getStorageKey() {
-  return `sf2x_checklist_${currentRoom}`;
+  return `sf2x_checklist_${currentRoom || 'local'}`;
 }
 
 function renderMasterChecklist() {
@@ -575,129 +629,115 @@ function moveMatchToBench(teamKey, matchIndex) {
 
   const movedChar = targetOrders.match.splice(matchIndex, 1)[0];
   movedChar.revealed = false;
+  if (!targetOrders.bench) targetOrders.bench = [];
   targetOrders.bench.push(movedChar);
 
   syncToFirebase();
 }
 
-function toggleReveal(teamKey, matchIndex) {
-  const targetOrders = (teamKey === '1') ? appState.team1Orders : appState.team2Orders;
-  if (!targetOrders.match || !targetOrders.match[matchIndex]) return;
-
-  targetOrders.match[matchIndex].revealed = !targetOrders.match[matchIndex].revealed;
-  syncToFirebase();
-}
-
 function renderDisplay() {
-  renderTeamSide('1', 'team1-match-display', 'team1-bench-display');
-  renderTeamSide('2', 'team2-match-display', 'team2-bench-display');
+  renderTeamDisplay('1', appState.team1Members, appState.team1Orders);
+  renderTeamDisplay('2', appState.team2Members, appState.team2Orders);
 }
 
-function renderTeamSide(teamKey, matchContainerId, benchContainerId) {
-  const matchContainer = document.getElementById(matchContainerId);
-  const benchContainer = document.getElementById(benchContainerId);
+// -------------------------------------------------------------
+// 旧アプリの正しい描画ロジックをベースに完全に復元した関数
+// -------------------------------------------------------------
+function renderTeamDisplay(teamKey, members, ordersObj) {
+  const matchContainer = document.getElementById(`team${teamKey}-match-display`);
+  const benchContainer = document.getElementById(`team${teamKey}-bench-display`);
   if (!matchContainer || !benchContainer) return;
 
   matchContainer.innerHTML = "";
   benchContainer.innerHTML = "";
 
-  const ordersObj = (teamKey === '1') ? appState.team1Orders : appState.team2Orders;
-  const matchList = ordersObj.match || [];
-  const benchList = ordersObj.bench || [];
+  if ((currentRole === 'p1_only' && teamKey === '2') || (currentRole === 'p2_only' && teamKey === '1')) {
+    matchContainer.innerHTML = `<div style="padding:20px; text-align:center; color:#666;">（非表示）</div>`;
+    benchContainer.innerHTML = `<div style="padding:20px; text-align:center; color:#666;">（非表示）</div>`;
+    return;
+  }
 
-  matchList.forEach((slot, idx) => {
-    const card = document.createElement("div");
-    card.className = "player-card";
-    
-    let isHidden = !slot.revealed;
-    if (isHidden) card.classList.add("is-hidden");
+  const faceClass = (teamKey === '2') ? "char-face p2-face" : "char-face";
+  const modeElement = document.querySelector('input[name="orderMode"]:checked');
+  const isCounterPickMode = modeElement && modeElement.value === 'counterPick';
 
-    let charInfo = allCharacters.find(c => c.id === slot.charId);
-    let faceHtml = "";
-    let charNameText = "";
+  if (!appState.isOrderSet) {
+    if (members) {
+      members.forEach((name, idx) => {
+        const card = document.createElement("div");
+        card.className = "player-card";
+        card.innerHTML = `<span class="order-num">${idx + 1}.</span><div class="player-info"><div class="player-name">${escapeHTML(name)}</div></div>`;
+        matchContainer.appendChild(card);
+      });
+    }
+  } else {
+    if (ordersObj.match) {
+      ordersObj.match.forEach((slot, idx) => {
+        const card = document.createElement("div");
+        const charInfo = allCharacters.find(c => c.id === slot.charId) || { name: "未選択", icon: "" };
+        card.className = `player-card ${slot.revealed ? '' : 'is-hidden'}`;
+        
+        if (slot.revealed) {
+          card.innerHTML = `
+            <span class="order-num">${idx + 1}.</span>
+            <img class="${faceClass}" src="${charInfo.icon}" onerror="handleImgError(this)">
+            <div class="player-info">
+              <div class="player-name" title="${escapeHTML(slot.name)}">${slot.name ? escapeHTML(slot.name) : '未設定'}</div>
+              <div class="char-name">${charInfo.name}</div>
+            </div>
+          `;
+        } else {
+          // 未選択・非公開のときは旧アプリ同様に「？？？」「（伏せ）」と secret.png を使う
+          card.innerHTML = `
+            <span class="order-num">${idx + 1}.</span>
+            <img class="${faceClass}" src="image/secret.png" onerror="handleImgError(this)">
+            <div class="player-info">
+              <div class="player-name">？？？</div>
+              <div class="char-name">（伏せ）</div>
+            </div>
+          `;
+        }
 
-    if (slot.charId && charInfo) {
-      const faceClass = (teamKey === '2') ? "char-face p2-face" : "char-face";
-      faceHtml = `<img class="${faceClass}" src="${charInfo.icon}" onerror="handleImgError(this)">`;
-      charNameText = isHidden ? "???" : charInfo.name;
-    } else {
-      const faceClass = (teamKey === '2') ? "char-face p2-face" : "char-face";
-      faceHtml = `<img class="${faceClass}" src="" style="background:#333;">`;
-      charNameText = "未選択";
+        card.onclick = () => {
+          if (isCounterPickMode && idx > 0) {
+            moveMatchToBench(teamKey, idx);
+          } else {
+            slot.revealed = !slot.revealed;
+            syncToFirebase();
+          }
+        };
+
+        matchContainer.appendChild(card);
+      });
     }
 
-    let playerNameText = slot.name ? (isHidden ? "???" : slot.name) : "（空き枠）";
+    if (ordersObj.bench) {
+      ordersObj.bench.forEach((slot, idx) => {
+        const card = document.createElement("div");
+        const charInfo = allCharacters.find(c => c.id === slot.charId) || { name: "未選択", icon: "" };
+        card.className = "player-card";
+        
+        card.innerHTML = `
+          <img class="${faceClass}" src="${charInfo.icon}" onerror="handleImgError(this)">
+          <div class="player-info">
+            <div class="player-name" title="${escapeHTML(slot.name)}">${slot.name ? escapeHTML(slot.name) : '未設定'}</div>
+            <div class="char-name">${charInfo.name}</div>
+          </div>
+        `;
 
-    card.innerHTML = `
-      <span class="order-num">${idx + 1}</span>
-      ${faceHtml}
-      <div class="player-info">
-        <div class="player-name">${escapeHTML(playerNameText)}</div>
-        <div class="char-name">${escapeHTML(charNameText)}</div>
-      </div>
-    `;
+        card.onclick = () => {
+          moveBenchToMatch(teamKey, idx);
+        };
 
-    card.onclick = () => {
-      if (currentRole === 'p1_only' && teamKey === '2') return;
-      if (currentRole === 'p2_only' && teamKey === '1') return;
-
-      if (!slot.revealed) {
-        toggleReveal(teamKey, idx);
-      } else {
-        moveMatchToBench(teamKey, idx);
-      }
-    };
-
-    matchContainer.appendChild(card);
-  });
-
-  benchList.forEach((slot, idx) => {
-    const card = document.createElement("div");
-    card.className = "player-card";
-    card.style.opacity = "0.7";
-
-    let charInfo = allCharacters.find(c => c.id === slot.charId);
-    let faceHtml = "";
-    let charNameText = charInfo ? charInfo.name : "未選択";
-
-    if (charInfo) {
-      const faceClass = (teamKey === '2') ? "char-face p2-face" : "char-face";
-      faceHtml = `<img class="${faceClass}" src="${charInfo.icon}" onerror="handleImgError(this)">`;
-    } else {
-      const faceClass = (teamKey === '2') ? "char-face p2-face" : "char-face";
-      faceHtml = `<img class="${faceClass}" src="" style="background:#333;">`;
+        benchContainer.appendChild(card);
+      });
     }
-
-    card.innerHTML = `
-      <span class="order-num" style="color:#666;">-</span>
-      ${faceHtml}
-      <div class="player-info">
-        <div class="player-name">${escapeHTML(slot.name || "（空き）")}</div>
-        <div class="char-name">${escapeHTML(charNameText)}</div>
-      </div>
-    `;
-
-    card.onclick = () => {
-      if (currentRole === 'p1_only' && teamKey === '2') return;
-      if (currentRole === 'p2_only' && teamKey === '1') return;
-
-      moveBenchToMatch(teamKey, idx);
-    };
-
-    benchContainer.appendChild(card);
-  });
+  }
 }
 
 function escapeHTML(str) {
-  if (!str) return '';
-  return str.replace(/[&'`<>"]/g, function(match) {
-    return {
-      '&': '&amp;',
-      "'": '&#x27;',
-      '`': '&#x60;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-    }[match];
+  if (!str) return "";
+  return str.replace(/[&<>"']/g, function(m) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
   });
 }
