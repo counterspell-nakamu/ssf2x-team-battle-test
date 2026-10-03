@@ -73,10 +73,13 @@ function loadLocalState() {
   normalizeAppState();
 }
 
-// ローカルモード用: 部屋機能に関するUI（現在のルーム表示・部屋移動）を隠す
+// ローカルモード用: 他端末との同期が前提のUI（部屋表示・端末別入力モード設定）を隠す
 function hideRoomUIForLocalMode() {
   const roomControls = document.querySelector('.room-header-controls');
   if (roomControls) roomControls.style.display = 'none';
+
+  const deviceRoleSection = document.getElementById('deviceRoleSection');
+  if (deviceRoleSection) deviceRoleSection.style.display = 'none';
 }
 
 window.onload = function() {
