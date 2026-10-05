@@ -32,6 +32,18 @@ const allCharacters = baseChars.map((name, i) => ({
 
 const defaultPlayers = ["ウメハラ", "ヌキ", "ハイタニ", "サコー", "ナカム～", "ぐっち", "こたか", "サシシ"];
 
+// 公平なシャッフル（Fisher-Yates）。
+// sort(() => Math.random() - 0.5) は分布が偏るため、ランダム抽選が絡む箇所では
+// すべてこの関数を使う。
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 let appState = {
   masterPlayers: [...defaultPlayers],
   team1Members: [],
@@ -315,7 +327,7 @@ function makeRandomTeams() {
   }
 
   const splitMode = document.querySelector('input[name="splitMode"]:checked').value;
-  let shuffled = [...selectedPlayers].sort(() => Math.random() - 0.5);
+  let shuffled = shuffleArray(selectedPlayers);
 
   if (splitMode === 'handicap1_p1') {
     appState.team1Members = [shuffled[0]];
@@ -510,12 +522,12 @@ function fillFullRandomModal() {
   
   let playerPool = [];
   while (playerPool.length < slotCount) {
-    let shuffledMembers = [...members].sort(() => Math.random() - 0.5);
+    let shuffledMembers = shuffleArray(members);
     playerPool = playerPool.concat(shuffledMembers);
   }
   playerPool = playerPool.slice(0, slotCount);
 
-  let shuffledChars = [...allCharacters].sort(() => Math.random() - 0.5);
+  let shuffledChars = shuffleArray(allCharacters);
 
   rows.forEach((row, idx) => {
     row.querySelector(".m-name").value = playerPool[idx];
@@ -580,13 +592,13 @@ function saveOrderModal() {
     targetOrders.match = [tempSelections[0]];
     targetOrders.bench = tempSelections.slice(1);
   } else if (mode === 'bossFixed') {
-    let topN = tempSelections.slice(0, slotCount - 1).sort(() => Math.random() - 0.5);
+    let topN = shuffleArray(tempSelections.slice(0, slotCount - 1));
     let finalOrder = [...topN, tempSelections[slotCount - 1]];
     finalOrder.forEach(slot => slot.revealed = false);
     targetOrders.match = finalOrder;
     targetOrders.bench = [];
   } else if (mode === 'fullRandom') {
-    let shuffledChars = [...allCharacters].sort(() => Math.random() - 0.5);
+    let shuffledChars = shuffleArray(allCharacters);
     let fullRandomOrder = tempSelections.map((slot, idx) => {
       const chosenChar = shuffledChars[idx % shuffledChars.length];
       return {
