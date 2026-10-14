@@ -82,25 +82,30 @@
     </details>
   </div>
 
+  <!-- OBS表示部分：上下積み＆ヘッダー改行対応 -->
   <div class="obs-display">
-    <div class="team-column">
-      <div class="team-title bench-header">1P 待機 (ベンチ)</div>
-      <div id="team1-bench-display"></div>
+    <!-- 1P側グループ -->
+    <div class="team-group">
+      <div class="team-column">
+        <div class="team-title p1-header">1P TEAM<br><span style="font-size:0.75em; font-weight:normal;">(対戦枠)</span></div>
+        <div id="team1-match-display"></div>
+      </div>
+      <div class="team-column">
+        <div class="team-title bench-header">1P 待機<br><span style="font-size:0.75em; font-weight:normal;">(ベンチ)</span></div>
+        <div id="team1-bench-display"></div>
+      </div>
     </div>
 
-    <div class="team-column">
-      <div class="team-title p1-header">1P TEAM (対戦枠)</div>
-      <div id="team1-match-display"></div>
-    </div>
-
-    <div class="team-column">
-      <div class="team-title p2-header">2P TEAM (対戦枠)</div>
-      <div id="team2-match-display"></div>
-    </div>
-
-    <div class="team-column">
-      <div class="team-title bench-header">2P 待機 (ベンチ)</div>
-      <div id="team2-bench-display"></div>
+    <!-- 2P側グループ -->
+    <div class="team-group">
+      <div class="team-column">
+        <div class="team-title p2-header">2P TEAM<br><span style="font-size:0.75em; font-weight:normal;">(対戦枠)</span></div>
+        <div id="team2-match-display"></div>
+      </div>
+      <div class="team-column">
+        <div class="team-title bench-header">2P 待機<br><span style="font-size:0.75em; font-weight:normal;">(ベンチ)</span></div>
+        <div id="team2-bench-display"></div>
+      </div>
     </div>
   </div>
 
