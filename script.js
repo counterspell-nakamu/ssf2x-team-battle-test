@@ -1,5 +1,5 @@
 // ==========================================
-// スパ2X キャラ戦 チーム管理＆OBSツール - script.js (分割版・修正済み)
+// スパ2X キャラ戦 チーム管理＆OBSツール - script.js (手動チーム編成対応版)
 // ==========================================
 
 const firebaseConfig = {
@@ -17,10 +17,6 @@ const db = firebase.database();
 const urlParams = new URLSearchParams(window.location.search);
 const roomParam = urlParams.get('room');
 
-// room パラメータが無い場合は「ローカルモード」で起動する。
-// ローカルモードは Firebase を一切経由せず、このブラウザタブの中だけで完結する。
-// 友人に配る用の通常URL → ローカルモード（お互いに影響しない）
-// 自分用の ?room=好きな名前 付きURL → 今まで通りFirebase同期モード
 let isLocalMode = !roomParam;
 let currentRoom = roomParam || null;
 const LOCAL_STORAGE_STATE_KEY = 'sf2x_local_state';
@@ -32,18 +28,6 @@ const allCharacters = baseChars.map((name, i) => ({
 
 const defaultPlayers = ["ウメハラ", "ヌキ", "ハイタニ", "サコー", "ナカム～", "ぐっち", "こたか", "サシシ"];
 
-// 公平なシャッフル（Fisher-Yates）。
-// sort(() => Math.random() - 0.5) は分布が偏るため、ランダム抽選が絡む箇所では
-// すべてこの関数を使う。
-function shuffleArray(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
 let appState = {
   masterPlayers: [...defaultPlayers],
   team1Members: [],
@@ -54,13 +38,14 @@ let appState = {
   isOrderSet: false
 };
 
+// 手動編成モード用の仮チーム保持
+let manualTeams = { "1P": [], "2P": [] };
+
 let currentRole = 'pc_all';
 let currentModalTeam = '1';
 let sortableInstance = null;
 let activeCharTargetInput = null;
 
-// appState の形が古いデータや空データでも壊れないように整える共通処理
-// （Firebaseモード／ローカルモードの両方から呼ばれる）
 function normalizeAppState() {
   if (!appState.slotCount) appState.slotCount = 16;
   if (!appState.masterPlayers || appState.masterPlayers.length === 0) {
@@ -74,7 +59,6 @@ function normalizeAppState() {
   }
 }
 
-// ローカルモード用: 前回リロード前の状態を localStorage から復元する
 function loadLocalState() {
   try {
     const saved = localStorage.getItem(LOCAL_STORAGE_STATE_KEY);
@@ -85,7 +69,6 @@ function loadLocalState() {
   normalizeAppState();
 }
 
-// ローカルモード用: 他端末との同期が前提のUI（部屋表示・端末別入力モード設定）を隠す
 function hideRoomUIForLocalMode() {
   const roomControls = document.querySelector('.room-header-controls');
   if (roomControls) roomControls.style.display = 'none';
@@ -105,6 +88,7 @@ window.onload = function() {
     if (slotSelect) slotSelect.value = appState.slotCount;
     updateRuleOptionLabels();
     renderMasterChecklist();
+    toggleTeamMode();
     renderDisplay();
   } else {
     document.getElementById("currentRoomDisplay").textContent = currentRoom;
@@ -118,6 +102,7 @@ window.onload = function() {
         document.getElementById("slotCountSelect").value = appState.slotCount;
         updateRuleOptionLabels();
         renderMasterChecklist();
+        toggleTeamMode();
         renderDisplay();
       } else {
         syncToFirebase();
@@ -147,7 +132,6 @@ function initSlotSelectOptions() {
 
 function syncToFirebase() {
   if (isLocalMode) {
-    // Firebaseを経由せず、このタブの中だけで保存・再描画する
     try {
       localStorage.setItem(LOCAL_STORAGE_STATE_KEY, JSON.stringify(appState));
     } catch (e) {}
@@ -272,6 +256,7 @@ function renderMasterChecklist() {
     `;
     container.appendChild(item);
   });
+  updateManualTeamLists();
 }
 
 function saveChecklistState() {
@@ -282,6 +267,7 @@ function saveChecklistState() {
   try {
     localStorage.setItem(getStorageKey(), JSON.stringify(states));
   } catch(e) {}
+  updateManualTeamLists();
 }
 
 function addNewPlayer() {
@@ -318,27 +304,119 @@ function deletePlayer(index) {
   syncToFirebase();
 }
 
+// -------------------------------------------------------------
+// 手動選択・ドラッグ自由編成モード関連の関数
+// -------------------------------------------------------------
+function toggleTeamMode() {
+  const mode = document.querySelector('input[name="splitMode"]:checked').value;
+  const panel = document.getElementById('manualTeamPanel');
+  if (mode === 'manual') {
+    panel.style.display = 'block';
+    const checkboxes = document.querySelectorAll(".player-chk:checked");
+    const active = Array.from(checkboxes).map(cb => cb.value);
+    
+    // まだ手動リストにいない人を1Pまたは初期配分
+    active.forEach(m => {
+      if (!manualTeams['1P'].includes(m) && !manualTeams['2P'].includes(m)) {
+        manualTeams['1P'].push(m);
+      }
+    });
+    // リストから外れた人を削除
+    manualTeams['1P'] = manualTeams['1P'].filter(m => active.includes(m));
+    manualTeams['2P'] = manualTeams['2P'].filter(m => active.includes(m));
+    updateManualTeamLists();
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+function updateManualTeamLists() {
+  const list1 = document.getElementById('manual1pList');
+  const list2 = document.getElementById('manual2pList');
+  if (!list1 || !list2) return;
+
+  list1.innerHTML = '';
+  list2.innerHTML = '';
+
+  manualTeams['1P'].forEach(name => {
+    list1.appendChild(createManualCard(name, '1P'));
+  });
+  manualTeams['2P'].forEach(name => {
+    list2.appendChild(createManualCard(name, '2P'));
+  });
+
+  const c1 = document.getElementById('manual1pCount');
+  const c2 = document.getElementById('manual2pCount');
+  if (c1) c1.innerText = manualTeams['1P'].length;
+  if (c2) c2.innerText = manualTeams['2P'].length;
+}
+
+function createManualCard(name, team) {
+  const div = document.createElement('div');
+  div.className = 'player-card';
+  div.draggable = true;
+  div.style.cursor = 'grab';
+  div.style.justifyContent = 'space-between';
+  div.style.padding = '3px 6px';
+  div.style.height = '32px';
+  div.style.marginBottom = '2px';
+
+  div.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData('text/plain', JSON.stringify({ name, fromTeam: team }));
+  });
+
+  const oppositeTeam = team === '1P' ? '2P' : '1P';
+  const arrowIcon = team === '1P' ? '▶' : '◀';
+
+  div.innerHTML = `
+    <span style="font-size: 0.85em; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHTML(name)}</span>
+    <button type="button" class="btn-arrow" onclick="moveManualMember('${escapeHTML(name)}', '${team}', '${oppositeTeam}')">${arrowIcon}</button>
+  `;
+  return div;
+}
+
+function allowDrop(e) {
+  e.preventDefault();
+}
+
+function dropToTeam(e, targetTeam) {
+  e.preventDefault();
+  try {
+    const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+    moveManualMember(data.name, data.fromTeam, targetTeam);
+  } catch(err) {}
+}
+
+function moveManualMember(name, fromTeam, toTeam) {
+  if (fromTeam === toTeam) return;
+  manualTeams[fromTeam] = manualTeams[fromTeam].filter(m => m !== name);
+  if (!manualTeams[toTeam].includes(name)) {
+    manualTeams[toTeam].push(name);
+  }
+  updateManualTeamLists();
+}
+
+// -------------------------------------------------------------
+// チーム自動振り分け
+// -------------------------------------------------------------
 function makeRandomTeams() {
   const checkboxes = document.querySelectorAll(".player-chk:checked");
   const selectedPlayers = Array.from(checkboxes).map(cb => cb.value);
-  if (selectedPlayers.length < 2) {
-    alert("2名以上チェックしてください。");
+  if (selectedPlayers.length < 1) {
+    alert("参加者を1名以上チェックしてください。");
     return;
   }
 
   const splitMode = document.querySelector('input[name="splitMode"]:checked').value;
-  let shuffled = shuffleArray(selectedPlayers);
 
-  if (splitMode === 'handicap1_p1') {
-    appState.team1Members = [shuffled[0]];
-    appState.team2Members = shuffled.slice(1);
-  } else if (splitMode === 'handicap1_p2') {
-    appState.team1Members = shuffled.slice(1);
-    appState.team2Members = [shuffled[0]];
-  } else {
+  if (splitMode === 'normal') {
+    let shuffled = [...selectedPlayers].sort(() => Math.random() - 0.5);
     const half = Math.ceil(shuffled.length / 2);
     appState.team1Members = shuffled.slice(0, half);
     appState.team2Members = shuffled.slice(half);
+  } else if (splitMode === 'manual') {
+    appState.team1Members = [...manualTeams['1P']];
+    appState.team2Members = [...manualTeams['2P']];
   }
 
   appState.team1Orders = createOrdersEmpty();
@@ -522,12 +600,12 @@ function fillFullRandomModal() {
   
   let playerPool = [];
   while (playerPool.length < slotCount) {
-    let shuffledMembers = shuffleArray(members);
+    let shuffledMembers = [...members].sort(() => Math.random() - 0.5);
     playerPool = playerPool.concat(shuffledMembers);
   }
   playerPool = playerPool.slice(0, slotCount);
 
-  let shuffledChars = shuffleArray(allCharacters);
+  let shuffledChars = [...allCharacters].sort(() => Math.random() - 0.5);
 
   rows.forEach((row, idx) => {
     row.querySelector(".m-name").value = playerPool[idx];
@@ -592,13 +670,13 @@ function saveOrderModal() {
     targetOrders.match = [tempSelections[0]];
     targetOrders.bench = tempSelections.slice(1);
   } else if (mode === 'bossFixed') {
-    let topN = shuffleArray(tempSelections.slice(0, slotCount - 1));
+    let topN = tempSelections.slice(0, slotCount - 1).sort(() => Math.random() - 0.5);
     let finalOrder = [...topN, tempSelections[slotCount - 1]];
     finalOrder.forEach(slot => slot.revealed = false);
     targetOrders.match = finalOrder;
     targetOrders.bench = [];
   } else if (mode === 'fullRandom') {
-    let shuffledChars = shuffleArray(allCharacters);
+    let shuffledChars = [...allCharacters].sort(() => Math.random() - 0.5);
     let fullRandomOrder = tempSelections.map((slot, idx) => {
       const chosenChar = shuffledChars[idx % shuffledChars.length];
       return {
@@ -655,12 +733,10 @@ function renderDisplay() {
   renderTeamDisplay('2', appState.team2Members, appState.team2Orders);
 }
 
-// -------------------------------------------------------------
-// 旧アプリの正しい描画ロジックをベースに完全に復元した関数
-// -------------------------------------------------------------
 function renderTeamDisplay(teamKey, members, ordersObj) {
   const matchContainer = document.getElementById(`team${teamKey}-match-display`);
   const benchContainer = document.getElementById(`team${teamKey}-bench-display`);
+  const benchCol = document.getElementById(`team${teamKey}-bench-col`);
   if (!matchContainer || !benchContainer) return;
 
   matchContainer.innerHTML = "";
@@ -685,6 +761,7 @@ function renderTeamDisplay(teamKey, members, ordersObj) {
         matchContainer.appendChild(card);
       });
     }
+    if (benchCol) benchCol.style.display = 'block';
   } else {
     if (ordersObj.match) {
       ordersObj.match.forEach((slot, idx) => {
@@ -702,7 +779,6 @@ function renderTeamDisplay(teamKey, members, ordersObj) {
             </div>
           `;
         } else {
-          // 未選択・非公開のときは旧アプリ同様に「？？？」「（伏せ）」と secret.png を使う
           card.innerHTML = `
             <span class="order-num">${idx + 1}.</span>
             <img class="${faceClass}" src="image/secret.png" onerror="handleImgError(this)">
@@ -726,7 +802,8 @@ function renderTeamDisplay(teamKey, members, ordersObj) {
       });
     }
 
-    if (ordersObj.bench) {
+    if (ordersObj.bench && ordersObj.bench.length > 0) {
+      if (benchCol) benchCol.style.display = 'block';
       ordersObj.bench.forEach((slot, idx) => {
         const card = document.createElement("div");
         const charInfo = allCharacters.find(c => c.id === slot.charId) || { name: "未選択", icon: "" };
@@ -746,6 +823,8 @@ function renderTeamDisplay(teamKey, members, ordersObj) {
 
         benchContainer.appendChild(card);
       });
+    } else {
+      if (benchCol) benchCol.style.display = 'none';
     }
   }
 }
