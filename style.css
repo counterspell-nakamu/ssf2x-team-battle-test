@@ -152,8 +152,6 @@ textarea, select, input[type="text"] {
   padding: 0 2px;
 }
 
-
-
 /* --- OBS表示部分：左右2列＆上下積み・横幅280px固定 --- */
 .obs-display {
   display: grid;
@@ -251,7 +249,7 @@ textarea, select, input[type="text"] {
   text-overflow: ellipsis; 
 }
 
-/* キャラ名はご指示通り完全非表示 */
+/* キャラ名は完全非表示 */
 .char-name { 
   display: none !important; 
 }
