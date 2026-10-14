@@ -152,27 +152,40 @@ textarea, select, input[type="text"] {
   padding: 0 2px;
 }
 
+
+
+/* --- OBS表示部分：左右2列＆上下積み・横幅280px固定 --- */
 .obs-display {
   display: grid;
-  grid-template-columns: 1fr 1.2fr 1.2fr 1fr;
-  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  max-width: 280px;
+  box-sizing: border-box;
+}
+
+.team-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .team-column {
   background: var(--panel-bg);
   border-radius: 8px;
-  padding: 8px;
+  padding: 5px;
   box-sizing: border-box;
-  min-height: 400px;
+  min-width: 0;
 }
 
 .team-title {
   text-align: center;
-  font-size: 1em;
+  font-size: 0.85em;
   font-weight: bold;
-  padding: 4px;
+  padding: 3px 2px;
   border-radius: 4px;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
+  line-height: 1.15;
 }
 .p1-header { background: var(--1p-color); }
 .p2-header { background: var(--2p-color); }
@@ -182,24 +195,37 @@ textarea, select, input[type="text"] {
   display: flex;
   align-items: center;
   background: var(--card-bg);
-  margin-bottom: 4px;
-  padding: 4px 6px;
+  margin-bottom: 3px;
+  padding: 3px 5px;
   border-radius: 4px;
-  gap: 6px;
+  gap: 5px;
   cursor: pointer;
   user-select: none;
   width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
-  height: 42px;
+  height: 40px;
   transition: transform 0.1s, background 0.1s;
+  overflow: hidden;
 }
 .player-card:hover { background: #323246; transform: scale(1.01); }
 
-.order-num { font-weight: bold; width: 20px; color: #aaa; text-align: right; font-size: 0.9em; flex-shrink: 0; }
+.order-num { 
+  font-weight: bold; 
+  width: 18px; 
+  color: #aaa; 
+  text-align: right; 
+  font-size: 0.85em; 
+  flex-shrink: 0; 
+}
 
+/* キャラ画像（32px×32pxに絶対固定） */
+.player-card img.char-face,
 .char-face { 
-  width: 32px; 
-  height: 32px; 
+  width: 32px !important; 
+  height: 32px !important; 
+  max-width: 32px !important;
+  max-height: 32px !important;
   object-fit: cover; 
   border-radius: 3px; 
   background: #000; 
@@ -210,7 +236,13 @@ textarea, select, input[type="text"] {
 }
 .char-face.load-error { display: none; }
 
-.player-info { flex: 1; overflow: hidden; min-width: 0; }
+.player-info { 
+  flex: 1; 
+  overflow: hidden; 
+  min-width: 0; 
+}
+
+/* プレイヤー名 */
 .player-name { 
   font-size: 0.9em; 
   font-weight: bold; 
@@ -218,10 +250,13 @@ textarea, select, input[type="text"] {
   overflow: hidden; 
   text-overflow: ellipsis; 
 }
-.char-name { font-size: 0.7em; color: #bbb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* キャラ名はご指示通り完全非表示 */
+.char-name { 
+  display: none !important; 
+}
 
 .is-hidden .player-name { color: #666; }
-.is-hidden .char-name { color: #444; }
 
 .modal {
   display: none;
@@ -305,8 +340,8 @@ textarea, select, input[type="text"] {
   background: #333348;
 }
 .char-palette-item img {
-  width: 40px;
-  height: 40px;
+  width: 40px !important;
+  height: 40px !important;
   object-fit: cover;
   display: block;
   border-radius: 3px;
