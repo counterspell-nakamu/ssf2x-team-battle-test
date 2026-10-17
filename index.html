@@ -61,6 +61,18 @@
               </div>
             </div>
 
+            <!-- ランダム時出現キャラ設定（ブラックリスト） -->
+            <div class="mode-select" style="margin-bottom:8px; background:#111118; padding:8px; border-radius:6px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <b>🚫 ランダム時出現キャラ設定:</b>
+                <div style="display:flex; gap:6px;">
+                  <button class="btn-arrow" type="button" onclick="selectAllAllowedChars(true)">全選択</button>
+                  <button class="btn-arrow" type="button" onclick="selectAllAllowedChars(false)">全解除</button>
+                </div>
+              </div>
+              <div id="charBlacklistGrid" class="char-blacklist-grid"></div>
+            </div>
+
             <button class="btn btn-success" style="width:100%;" onclick="makeRandomTeams()">チェックした人を1P / 2Pチームに自動振り分け</button>
           </div>
 
