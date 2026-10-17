@@ -1,5 +1,5 @@
 // ==========================================
-// スパ2X キャラ戦 チーム管理＆OBSツール - script.js (手動チーム編成対応版)
+// スパ2X キャラ戦 チーム管理＆OBSツール - script.js
 // ==========================================
 
 const firebaseConfig = {
@@ -35,10 +35,10 @@ let appState = {
   team1Orders: { match: [], bench: [] },
   team2Orders: { match: [], bench: [] },
   slotCount: 16,
-  isOrderSet: false
+  isOrderSet: false,
+  allowedCharIds: allCharacters.map(c => c.id)
 };
 
-// 手動編成モード用の仮チーム保持
 let manualTeams = { "1P": [], "2P": [] };
 
 let currentRole = 'pc_all';
@@ -50,6 +50,9 @@ function normalizeAppState() {
   if (!appState.slotCount) appState.slotCount = 16;
   if (!appState.masterPlayers || appState.masterPlayers.length === 0) {
     appState.masterPlayers = [...defaultPlayers];
+  }
+  if (!appState.allowedCharIds || !Array.isArray(appState.allowedCharIds) || appState.allowedCharIds.length === 0) {
+    appState.allowedCharIds = allCharacters.map(c => c.id);
   }
   if (Array.isArray(appState.team1Orders)) {
     appState.team1Orders = { match: appState.team1Orders, bench: [] };
@@ -88,6 +91,7 @@ window.onload = function() {
     if (slotSelect) slotSelect.value = appState.slotCount;
     updateRuleOptionLabels();
     renderMasterChecklist();
+    renderCharBlacklistUI();
     toggleTeamMode();
     renderDisplay();
   } else {
@@ -102,6 +106,7 @@ window.onload = function() {
         document.getElementById("slotCountSelect").value = appState.slotCount;
         updateRuleOptionLabels();
         renderMasterChecklist();
+        renderCharBlacklistUI();
         toggleTeamMode();
         renderDisplay();
       } else {
@@ -136,6 +141,7 @@ function syncToFirebase() {
       localStorage.setItem(LOCAL_STORAGE_STATE_KEY, JSON.stringify(appState));
     } catch (e) {}
     renderMasterChecklist();
+    renderCharBlacklistUI();
     renderDisplay();
     return;
   }
@@ -305,6 +311,65 @@ function deletePlayer(index) {
 }
 
 // -------------------------------------------------------------
+// 出現キャラ（ブラックリスト）設定の描画・操作
+// -------------------------------------------------------------
+function renderCharBlacklistUI() {
+  const container = document.getElementById("charBlacklistGrid");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!appState.allowedCharIds || appState.allowedCharIds.length === 0) {
+    appState.allowedCharIds = allCharacters.map(c => c.id);
+  }
+
+  allCharacters.forEach(c => {
+    const isChecked = appState.allowedCharIds.includes(c.id);
+    const item = document.createElement("div");
+    item.className = `char-blacklist-item ${isChecked ? '' : 'is-disabled'}`;
+    item.title = c.name;
+    item.innerHTML = `
+      <input type="checkbox" value="${c.id}" ${isChecked ? 'checked' : ''} onchange="toggleAllowedChar('${c.id}', this.checked)">
+      <img src="${c.icon}" onerror="this.src=''">
+    `;
+    container.appendChild(item);
+  });
+}
+
+function toggleAllowedChar(charId, isChecked) {
+  if (!appState.allowedCharIds) appState.allowedCharIds = [];
+  if (isChecked) {
+    if (!appState.allowedCharIds.includes(charId)) {
+      appState.allowedCharIds.push(charId);
+    }
+  } else {
+    if (appState.allowedCharIds.length <= 1) {
+      alert("少なくとも1体以上のキャラクターを選択してください。");
+      renderCharBlacklistUI();
+      return;
+    }
+    appState.allowedCharIds = appState.allowedCharIds.filter(id => id !== charId);
+  }
+  syncToFirebase();
+}
+
+function selectAllAllowedChars(enableAll) {
+  if (enableAll) {
+    appState.allowedCharIds = allCharacters.map(c => c.id);
+  } else {
+    appState.allowedCharIds = [allCharacters[0].id];
+  }
+  syncToFirebase();
+}
+
+function getAvailableCharacters() {
+  if (!appState.allowedCharIds || appState.allowedCharIds.length === 0) {
+    return allCharacters;
+  }
+  const filtered = allCharacters.filter(c => appState.allowedCharIds.includes(c.id));
+  return filtered.length > 0 ? filtered : allCharacters;
+}
+
+// -------------------------------------------------------------
 // 手動選択・ドラッグ自由編成モード関連の関数
 // -------------------------------------------------------------
 function toggleTeamMode() {
@@ -315,13 +380,11 @@ function toggleTeamMode() {
     const checkboxes = document.querySelectorAll(".player-chk:checked");
     const active = Array.from(checkboxes).map(cb => cb.value);
     
-    // まだ手動リストにいない人を1Pまたは初期配分
     active.forEach(m => {
       if (!manualTeams['1P'].includes(m) && !manualTeams['2P'].includes(m)) {
         manualTeams['1P'].push(m);
       }
     });
-    // リストから外れた人を削除
     manualTeams['1P'] = manualTeams['1P'].filter(m => active.includes(m));
     manualTeams['2P'] = manualTeams['2P'].filter(m => active.includes(m));
     updateManualTeamLists();
@@ -532,7 +595,7 @@ function renderModalRows(members, orders, isFullRandom = false) {
         <span class="slot-label" style="width:125px; font-size:0.9em;"><b>${idx + 1}人目:</b></span>
         <select class="m-name" style="flex:1;">${nameOptions}</select>
         <input type="hidden" class="m-char" value="">
-        <span style="font-size:0.85em; color:#888; padding:4px 8px;">(キャラ自動割振)</span>
+        <span style="font-size:0.85em; color:#888; padding:4px 8px;">(許可キャラから自動)</span>
       `;
     } else {
       row.innerHTML = `
@@ -605,7 +668,8 @@ function fillFullRandomModal() {
   }
   playerPool = playerPool.slice(0, slotCount);
 
-  let shuffledChars = [...allCharacters].sort(() => Math.random() - 0.5);
+  const availableChars = getAvailableCharacters();
+  let shuffledChars = [...availableChars].sort(() => Math.random() - 0.5);
 
   rows.forEach((row, idx) => {
     row.querySelector(".m-name").value = playerPool[idx];
@@ -676,7 +740,8 @@ function saveOrderModal() {
     targetOrders.match = finalOrder;
     targetOrders.bench = [];
   } else if (mode === 'fullRandom') {
-    let shuffledChars = [...allCharacters].sort(() => Math.random() - 0.5);
+    const availableChars = getAvailableCharacters();
+    let shuffledChars = [...availableChars].sort(() => Math.random() - 0.5);
     let fullRandomOrder = tempSelections.map((slot, idx) => {
       const chosenChar = shuffledChars[idx % shuffledChars.length];
       return {
