@@ -152,6 +152,60 @@ textarea, select, input[type="text"] {
   padding: 0 2px;
 }
 
+/* --- キャラ出禁設定（ブラックリスト）横8×縦2配置 --- */
+.char-blacklist-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  padding: 6px;
+  background: #101015;
+  border: 1px solid #333;
+  border-radius: 4px;
+}
+
+.char-blacklist-item {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #20202d;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 3px;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+
+.char-blacklist-item.is-disabled {
+  opacity: 0.35;
+  filter: grayscale(100%);
+  background: #15151a;
+  border-color: #222;
+}
+
+.char-blacklist-item input[type="checkbox"] {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  transform: scale(0.8);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.char-blacklist-item img {
+  width: 32px !important;
+  height: 32px !important;
+  max-width: 32px !important;
+  max-height: 32px !important;
+  object-fit: cover;
+  border-radius: 3px;
+  display: block;
+}
+
+.char-blacklist-item span {
+  display: none !important;
+}
+
 /* --- OBS表示部分：左右2列＆上下積み・横幅280px固定 --- */
 .obs-display {
   display: grid;
@@ -217,7 +271,6 @@ textarea, select, input[type="text"] {
   flex-shrink: 0; 
 }
 
-/* キャラ画像（32px×32pxに絶対固定） */
 .player-card img.char-face,
 .char-face { 
   width: 32px !important; 
@@ -240,7 +293,6 @@ textarea, select, input[type="text"] {
   min-width: 0; 
 }
 
-/* プレイヤー名 */
 .player-name { 
   font-size: 0.9em; 
   font-weight: bold; 
@@ -249,7 +301,6 @@ textarea, select, input[type="text"] {
   text-overflow: ellipsis; 
 }
 
-/* キャラ名は完全非表示 */
 .char-name { 
   display: none !important; 
 }
