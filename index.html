@@ -61,16 +61,13 @@
               </div>
             </div>
 
-            <!-- ランダム時出現キャラ設定（ブラックリスト） -->
-            <div class="mode-select" style="margin-bottom:8px; background:#111118; padding:8px; border-radius:6px;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                <b>🚫 ランダム時出現キャラ設定:</b>
-                <div style="display:flex; gap:6px;">
-                  <button class="btn-arrow" type="button" onclick="selectAllAllowedChars(true)">全選択</button>
-                  <button class="btn-arrow" type="button" onclick="selectAllAllowedChars(false)">全解除</button>
-                </div>
+            <!-- ランダム時出現キャラ設定（ボタンでモーダル開閉） -->
+            <div class="mode-select" style="margin-bottom:8px; background:#111118; padding:8px; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <b>🚫 出現キャラ制限設定:</b><br>
+                <span style="font-size:0.8em; color:#aaa;">(全員完全ランダム時の出現対象を指定)</span>
               </div>
-              <div id="charBlacklistGrid" class="char-blacklist-grid"></div>
+              <button class="btn btn-purple" onclick="openCharBlacklistModal()">⚙️ キャラ制限設定</button>
             </div>
 
             <button class="btn btn-success" style="width:100%;" onclick="makeRandomTeams()">チェックした人を1P / 2Pチームに自動振り分け</button>
@@ -135,6 +132,7 @@
     </div>
   </div>
 
+  <!-- オーダー設定モーダル -->
   <div id="orderModal" class="modal">
     <div class="modal-content">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
@@ -149,6 +147,27 @@
       <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
         <button class="btn btn-success" onclick="saveOrderModal()">設定完了</button>
         <button class="btn btn-danger" onclick="closeOrderModal()">キャンセル</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- キャラクター出現制限（ブラックリスト）モーダル -->
+  <div id="charBlacklistModal" class="modal">
+    <div class="modal-content" style="max-width: 480px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h3 style="margin:0;">🚫 ランダム時出現キャラ設定</h3>
+        <div style="display:flex; gap:6px;">
+          <button class="btn-arrow" type="button" onclick="selectAllAllowedChars(true)">全選択</button>
+          <button class="btn-arrow" type="button" onclick="selectAllAllowedChars(false)">全解除</button>
+        </div>
+      </div>
+      <p style="font-size:0.85em; color:#aaa; margin-top:0; margin-bottom:12px;">
+        チェックが入っているキャラのみが「全員完全ランダム」の対象になります。
+      </p>
+      <div id="charBlacklistGrid" class="char-blacklist-grid"></div>
+      <br>
+      <div style="display:flex; justify-content:flex-end;">
+        <button class="btn btn-success" onclick="closeCharBlacklistModal()">設定完了</button>
       </div>
     </div>
   </div>
