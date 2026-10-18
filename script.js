@@ -311,8 +311,17 @@ function deletePlayer(index) {
 }
 
 // -------------------------------------------------------------
-// 出現キャラ（ブラックリスト）設定の描画・操作
+// 出現キャラ制限（ブラックリスト）モーダル・設定関連の関数
 // -------------------------------------------------------------
+function openCharBlacklistModal() {
+  renderCharBlacklistUI();
+  document.getElementById("charBlacklistModal").style.display = "flex";
+}
+
+function closeCharBlacklistModal() {
+  document.getElementById("charBlacklistModal").style.display = "none";
+}
+
 function renderCharBlacklistUI() {
   const container = document.getElementById("charBlacklistGrid");
   if (!container) return;
