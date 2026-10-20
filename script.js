@@ -887,4 +887,63 @@ function renderTeamDisplay(teamKey, members, ordersObj) {
             <img class="${faceClass}" src="${charInfo.icon}" onerror="handleImgError(this)">
             <div class="player-info">
               <div class="player-name" title="${escapeHTML(slot.name)}">${slot.name ? escapeHTML(slot.name) : '未設定'}</div>
-              <div class
+              <div class="char-name">${charInfo.name}</div>
+            </div>
+          `;
+        } else {
+          card.innerHTML = `
+            <span class="order-num">${idx + 1}.</span>
+            <img class="${faceClass}" src="image/secret.png" onerror="handleImgError(this)">
+            <div class="player-info">
+              <div class="player-name">？？？</div>
+              <div class="char-name">（伏せ）</div>
+            </div>
+          `;
+        }
+
+        card.onclick = () => {
+          if (isCounterPickMode && idx > 0) {
+            moveMatchToBench(teamKey, idx);
+          } else {
+            slot.revealed = !slot.revealed;
+            syncToFirebase();
+          }
+        };
+
+        matchContainer.appendChild(card);
+      });
+    }
+
+    if (ordersObj.bench && ordersObj.bench.length > 0) {
+      if (benchCol) benchCol.style.display = 'block';
+      ordersObj.bench.forEach((slot, idx) => {
+        const card = document.createElement("div");
+        const charInfo = allCharacters.find(c => c.id === slot.charId) || { name: "未選択", icon: "" };
+        card.className = "player-card";
+        
+        card.innerHTML = `
+          <img class="${faceClass}" src="${charInfo.icon}" onerror="handleImgError(this)">
+          <div class="player-info">
+            <div class="player-name" title="${escapeHTML(slot.name)}">${slot.name ? escapeHTML(slot.name) : '未設定'}</div>
+            <div class="char-name">${charInfo.name}</div>
+          </div>
+        `;
+
+        card.onclick = () => {
+          moveBenchToMatch(teamKey, idx);
+        };
+
+        benchContainer.appendChild(card);
+      });
+    } else {
+      if (benchCol) benchCol.style.display = 'none';
+    }
+  }
+}
+
+function escapeHTML(str) {
+  if (!str) return "";
+  return str.replace(/[&<>"']/g, function(m) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+  });
+}
