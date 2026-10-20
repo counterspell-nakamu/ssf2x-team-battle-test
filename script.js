@@ -84,9 +84,37 @@ function hideRoomUIForLocalMode() {
   if (deviceRoleSection) deviceRoleSection.style.display = 'none';
 }
 
+/* 表示サイズ（スライダー）の動的更新 */
+function updateCardSize(val) {
+  const size = parseInt(val, 10);
+  document.documentElement.style.setProperty('--card-face-size', `${size}px`);
+  document.documentElement.style.setProperty('--card-height', `${size + 8}px`);
+  document.documentElement.style.setProperty('--obs-area-width', `${size * 7.5 + 40}px`);
+
+  const disp = document.getElementById("sizeValueDisplay");
+  if (disp) disp.textContent = `${size}px`;
+
+  try {
+    localStorage.setItem('sf2x_card_face_size', size);
+  } catch(e) {}
+}
+
+function initCardSizeSetting() {
+  let savedSize = 36;
+  try {
+    const saved = localStorage.getItem('sf2x_card_face_size');
+    if (saved) savedSize = parseInt(saved, 10);
+  } catch(e) {}
+
+  const range = document.getElementById("cardSizeRange");
+  if (range) range.value = savedSize;
+  updateCardSize(savedSize);
+}
+
 window.onload = function() {
   initSlotSelectOptions();
   initCharPalette();
+  initCardSizeSetting();
 
   if (isLocalMode) {
     hideRoomUIForLocalMode();
