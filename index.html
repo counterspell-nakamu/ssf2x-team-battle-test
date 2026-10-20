@@ -14,26 +14,64 @@
 </head>
 <body>
 
-  <div class="admin-panel">
-    <details open>
-      <summary class="admin-summary">
-        <div class="admin-summary-header" onclick="event.stopPropagation();">
-          <span>▼ ⚙️ 管理操作パネル</span>
-          <a href="https://github.com/counterspell-nakamu/ssf2x-team-battle-test" target="_blank" class="manual-link" onclick="event.stopPropagation();">📖 使い方 / Manual</a>
+  <!-- トップヘッダー（ルーム情報・マニュアル） -->
+  <div class="top-header">
+    <div class="room-header-controls">
+      <span>🏠 現在のルーム: <strong id="currentRoomDisplay" style="color:#ff9f1c; font-size:1.1em;">default</strong></span>
+      <input type="text" id="roomInput" placeholder="部屋名" style="width:140px; padding:3px 6px;">
+      <button class="btn btn-warning" style="padding:4px 10px;" onclick="changeRoom()">部屋移動</button>
+    </div>
+    <a href="https://github.com/counterspell-nakamu/ssf2x-team-battle-test" target="_blank" class="manual-link">📖 使い方 / Manual</a>
+  </div>
+
+  <!-- メインコンテンツ（左右2分割レイアウト） -->
+  <div class="app-container">
+    
+    <!-- 左カラム：OBS対戦枠・ベンチ表示エリア -->
+    <div class="left-obs-area">
+      <!-- 表示サイズ調整スライダー -->
+      <div class="size-control-panel">
+        <label for="cardSizeRange">🔍 表示サイズ: <span id="sizeValueDisplay">36px</span></label>
+        <input type="range" id="cardSizeRange" min="28" max="52" value="36" oninput="updateCardSize(this.value)">
+      </div>
+
+      <div class="obs-display">
+        <!-- 1P側グループ -->
+        <div class="team-group">
+          <div class="team-column">
+            <div class="team-title p1-header">1P TEAM<br><span style="font-size:0.75em; font-weight:normal;">(対戦枠)</span></div>
+            <div id="team1-match-display"></div>
+          </div>
+          <div class="team-column" id="team1-bench-col">
+            <div class="team-title bench-header">1P 待機<br><span style="font-size:0.75em; font-weight:normal;">(ベンチ)</span></div>
+            <div id="team1-bench-display"></div>
+          </div>
         </div>
 
-        <div class="room-header-controls" onclick="event.stopPropagation();">
-          <span>🏠 現在のルーム: <strong id="currentRoomDisplay" style="color:#ff9f1c; font-size:1.1em;">default</strong></span>
-          <input type="text" id="roomInput" placeholder="部屋名" style="width:140px; padding:3px 6px;">
-          <button class="btn btn-warning" style="padding:4px 10px;" onclick="changeRoom()">部屋移動</button>
+        <!-- 2P側グループ -->
+        <div class="team-group">
+          <div class="team-column">
+            <div class="team-title p2-header">2P TEAM<br><span style="font-size:0.75em; font-weight:normal;">(対戦枠)</span></div>
+            <div id="team2-match-display"></div>
+          </div>
+          <div class="team-column" id="team2-bench-col">
+            <div class="team-title bench-header">2P 待機<br><span style="font-size:0.75em; font-weight:normal;">(ベンチ)</span></div>
+            <div id="team2-bench-display"></div>
+          </div>
         </div>
-      </summary>
+      </div>
+    </div>
 
-      <div class="admin-body">
+    <!-- 右カラム：管理操作パネルエリア -->
+    <div class="right-admin-area">
+      <div class="admin-panel">
+        <h3 style="margin-top:0; border-bottom: 1px solid #333; padding-bottom: 8px;">⚙️ 管理操作パネル</h3>
+
         <div class="grid-2">
+          <!-- 1. プレイヤー選択 -->
           <div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-              <h3 style="margin:0;">1. プレイヤー選択（本日の参加者）</h3>
+              <h3 style="margin:0; font-size:1em;">1. プレイヤー選択（本日の参加者）</h3>
               <div style="display:flex; gap:4px;">
                 <button class="btn-arrow" type="button" onclick="selectAllPlayers(true)">全選択</button>
                 <button class="btn-arrow" type="button" onclick="selectAllPlayers(false)">全解除</button>
@@ -70,8 +108,9 @@
             <button class="btn btn-success" style="width:100%;" onclick="makeRandomTeams()">チェックした人を1P / 2Pチームに自動振り分け</button>
           </div>
 
+          <!-- 2. オーダー＆キャラ設定 -->
           <div>
-            <h3>2. オーダー＆キャラ設定</h3>
+            <h3 style="margin-top:0; font-size:1em;">2. オーダー＆キャラ設定</h3>
             <div style="margin-bottom:8px; display:flex; align-items:center; gap:8px; background:#111118; padding:6px 8px; border-radius:6px;">
               <label for="slotCountSelect" style="font-weight:bold; font-size:0.9em;">🎯 対戦枠数 (キャラ数):</label>
               <select id="slotCountSelect" onchange="changeSlotCount(this.value)" style="padding:3px 6px;"></select>
@@ -97,36 +136,9 @@
             </div>
           </div>
         </div>
-
-      </div>
-    </details>
-  </div>
-
-  <!-- OBS表示部分：上下積み＆ヘッダー改行対応 -->
-  <div class="obs-display">
-    <!-- 1P側グループ -->
-    <div class="team-group">
-      <div class="team-column">
-        <div class="team-title p1-header">1P TEAM<br><span style="font-size:0.75em; font-weight:normal;">(対戦枠)</span></div>
-        <div id="team1-match-display"></div>
-      </div>
-      <div class="team-column" id="team1-bench-col">
-        <div class="team-title bench-header">1P 待機<br><span style="font-size:0.75em; font-weight:normal;">(ベンチ)</span></div>
-        <div id="team1-bench-display"></div>
       </div>
     </div>
 
-    <!-- 2P側グループ -->
-    <div class="team-group">
-      <div class="team-column">
-        <div class="team-title p2-header">2P TEAM<br><span style="font-size:0.75em; font-weight:normal;">(対戦枠)</span></div>
-        <div id="team2-match-display"></div>
-      </div>
-      <div class="team-column" id="team2-bench-col">
-        <div class="team-title bench-header">2P 待機<br><span style="font-size:0.75em; font-weight:normal;">(ベンチ)</span></div>
-        <div id="team2-bench-display"></div>
-      </div>
-    </div>
   </div>
 
   <!-- オーダー設定モーダル -->
