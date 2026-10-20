@@ -32,7 +32,13 @@
       <div class="admin-body">
         <div class="grid-2">
           <div>
-            <h3>1. プレイヤー選択（本日の参加者）</h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+              <h3 style="margin:0;">1. プレイヤー選択（本日の参加者）</h3>
+              <div style="display:flex; gap:4px;">
+                <button class="btn-arrow" type="button" onclick="selectAllPlayers(true)">全選択</button>
+                <button class="btn-arrow" type="button" onclick="selectAllPlayers(false)">全解除</button>
+              </div>
+            </div>
             <div id="masterChecklist" class="member-checklist"></div>
             
             <div style="display:flex; gap:5px; margin-bottom:10px;">
