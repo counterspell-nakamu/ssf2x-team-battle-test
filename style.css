@@ -5,6 +5,11 @@
   --text-color: #ffffff;
   --1p-color: #8d0801;
   --2p-color: #1d3557;
+  
+  /* カード・顔画像サイズの動的変数（スライダーで連動） */
+  --card-face-size: 36px;
+  --card-height: 44px;
+  --obs-area-width: 320px;
 }
 
 body {
@@ -17,54 +22,30 @@ body {
 
 h2, h3 { margin: 5px 0 10px 0; }
 
-.admin-summary-header {
+/* トップヘッダー */
+.top-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  width: 100%;
-  flex-wrap: wrap;
-  gap: 8px;
+  background: #20202d;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  border: 1px solid #333;
 }
+
 .manual-link {
   color: #ff9f1c;
   font-size: 0.9em;
   text-decoration: none;
   background: #252533;
-  padding: 3px 8px;
+  padding: 4px 10px;
   border-radius: 4px;
   border: 1px solid #444;
-  font-weight: normal;
 }
 .manual-link:hover {
   background: #333348;
   color: #fff;
-}
-
-.admin-panel {
-  background: var(--panel-bg);
-  border: 1px solid #333;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  overflow: hidden;
-}
-
-.admin-summary {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px;
-  background: #20202d;
-  cursor: pointer;
-  user-select: none;
-  font-weight: bold;
-  font-size: 1.1em;
-}
-.admin-summary:hover {
-  background: #282838;
-}
-
-.admin-body {
-  padding: 12px;
 }
 
 .room-header-controls {
@@ -72,7 +53,53 @@ h2, h3 { margin: 5px 0 10px 0; }
   align-items: center;
   gap: 8px;
   font-size: 0.85em;
-  font-weight: normal;
+}
+
+/* アプリ全体レイアウト（左右2分割） */
+.app-container {
+  display: flex;
+  gap: 15px;
+  align-items: flex-start;
+}
+
+/* 左側：OBS表示エリア */
+.left-obs-area {
+  flex-shrink: 0;
+  width: var(--obs-area-width);
+  position: sticky;
+  top: 10px;
+  transition: width 0.1s;
+}
+
+/* 表示サイズ調整コントロール */
+.size-control-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #15151f;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin-bottom: 8px;
+  font-size: 0.8em;
+  color: #aaa;
+}
+.size-control-panel input[type="range"] {
+  width: 120px;
+  cursor: pointer;
+}
+
+/* 右側：管理操作エリア（可変幅） */
+.right-admin-area {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-panel {
+  background: var(--panel-bg);
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 12px;
 }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
@@ -203,16 +230,12 @@ textarea, select, input[type="text"] {
   display: block;
 }
 
-.char-blacklist-item span {
-  display: none !important;
-}
-
-/* --- OBS表示部分：左右2列＆上下積み・横幅280px固定 --- */
+/* --- OBS表示部分：スライダー連動サイズ設定 --- */
 .obs-display {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
-  max-width: 280px;
+  width: 100%;
   box-sizing: border-box;
 }
 
@@ -226,7 +249,7 @@ textarea, select, input[type="text"] {
 .team-column {
   background: var(--panel-bg);
   border-radius: 8px;
-  padding: 5px;
+  padding: 4px;
   box-sizing: border-box;
   min-width: 0;
 }
@@ -249,39 +272,40 @@ textarea, select, input[type="text"] {
   align-items: center;
   background: var(--card-bg);
   margin-bottom: 3px;
-  padding: 3px 5px;
+  padding: 2px 4px;
   border-radius: 4px;
-  gap: 5px;
+  gap: 4px;
   cursor: pointer;
   user-select: none;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  height: 40px;
-  transition: transform 0.1s, background 0.1s;
+  height: var(--card-height);
+  transition: transform 0.1s, background 0.1s, height 0.1s;
   overflow: hidden;
 }
 .player-card:hover { background: #323246; transform: scale(1.01); }
 
 .order-num { 
   font-weight: bold; 
-  width: 18px; 
+  width: 16px; 
   color: #aaa; 
   text-align: right; 
-  font-size: 0.85em; 
+  font-size: 0.8em; 
   flex-shrink: 0; 
 }
 
 .player-card img.char-face,
 .char-face { 
-  width: 32px !important; 
-  height: 32px !important; 
-  max-width: 32px !important;
-  max-height: 32px !important;
+  width: var(--card-face-size) !important; 
+  height: var(--card-face-size) !important; 
+  max-width: var(--card-face-size) !important;
+  max-height: var(--card-face-size) !important;
   object-fit: cover; 
   border-radius: 3px; 
   background: #000; 
   flex-shrink: 0;
+  transition: width 0.1s, height 0.1s;
 }
 .p2-face {
   transform: scaleX(-1);
@@ -295,7 +319,7 @@ textarea, select, input[type="text"] {
 }
 
 .player-name { 
-  font-size: 0.9em; 
+  font-size: 0.85em; 
   font-weight: bold; 
   white-space: nowrap; 
   overflow: hidden; 
@@ -395,4 +419,21 @@ textarea, select, input[type="text"] {
   object-fit: cover;
   display: block;
   border-radius: 3px;
+}
+
+/* スマホ表示時のレスポンシブ対応 */
+@media (max-width: 768px) {
+  .app-container {
+    flex-direction: column-reverse;
+  }
+  .left-obs-area {
+    width: 100% !important;
+    position: static;
+  }
+  .obs-display {
+    width: 100%;
+  }
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
 }
