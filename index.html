@@ -129,7 +129,6 @@
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
         <h3 id="modalTitle" style="margin:0;">オーダー設定</h3>
         <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-          <!-- 完全ランダム時のみモーダル内に表示されるキャラ制限ボタン -->
           <button id="btnModalCharBlacklist" class="btn btn-purple" style="display:none;" onclick="openCharBlacklistModal()">⚙️ キャラ制限設定</button>
           <button class="btn" style="background:#4a5568;" onclick="autoFillGroupedPlayers()">👥 プレイヤー連続初期配置</button>
           <button id="btnFillAll" class="btn btn-purple" onclick="fillFullRandomModal()">テスト用全部埋めるだけ</button>
@@ -155,7 +154,7 @@
         </div>
       </div>
       <p style="font-size:0.85em; color:#aaa; margin-top:0; margin-bottom:12px;">
-        チェックが入っているキャラのみが「全員完全ランダム」の対象になります。
+        パネルをクリックして有効/無効を切り替えます（選択中：カラー / 非選択：グレー）。
       </p>
       <div id="charBlacklistGrid" class="char-blacklist-grid"></div>
       <br>
