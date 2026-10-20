@@ -61,15 +61,6 @@
               </div>
             </div>
 
-            <!-- ランダム時出現キャラ設定（ボタンでモーダル開閉） -->
-            <div class="mode-select" style="margin-bottom:8px; background:#111118; padding:8px; border-radius:6px; display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <b>🚫 出現キャラ制限設定:</b><br>
-                <span style="font-size:0.8em; color:#aaa;">(全員完全ランダム時の出現対象を指定)</span>
-              </div>
-              <button class="btn btn-purple" onclick="openCharBlacklistModal()">⚙️ キャラ制限設定</button>
-            </div>
-
             <button class="btn btn-success" style="width:100%;" onclick="makeRandomTeams()">チェックした人を1P / 2Pチームに自動振り分け</button>
           </div>
 
@@ -137,7 +128,9 @@
     <div class="modal-content">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
         <h3 id="modalTitle" style="margin:0;">オーダー設定</h3>
-        <div style="display:flex; gap:6px;">
+        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+          <!-- 完全ランダム時のみモーダル内に表示されるキャラ制限ボタン -->
+          <button id="btnModalCharBlacklist" class="btn btn-purple" style="display:none;" onclick="openCharBlacklistModal()">⚙️ キャラ制限設定</button>
           <button class="btn" style="background:#4a5568;" onclick="autoFillGroupedPlayers()">👥 プレイヤー連続初期配置</button>
           <button id="btnFillAll" class="btn btn-purple" onclick="fillFullRandomModal()">テスト用全部埋めるだけ</button>
         </div>
