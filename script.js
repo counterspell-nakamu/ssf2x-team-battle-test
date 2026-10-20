@@ -352,7 +352,7 @@ function toggleAllowedChar(charId, isChecked) {
     }
   } else {
     if (appState.allowedCharIds.length <= 1) {
-      alert("少なくとも1体以上のキャラクターを選択してください。");
+      alert("少なくとも1体 이상의キャラクターを選択してください。");
       renderCharBlacklistUI();
       return;
     }
@@ -530,9 +530,15 @@ function openOrderModal(teamKey) {
   
   const modeElement = document.querySelector('input[name="orderMode"]:checked');
   const isFullRandom = modeElement && modeElement.value === 'fullRandom';
+  
   const fillBtn = document.getElementById("btnFillAll");
   if (fillBtn) {
     fillBtn.style.display = isFullRandom ? "none" : "inline-block";
+  }
+
+  const blacklistBtn = document.getElementById("btnModalCharBlacklist");
+  if (blacklistBtn) {
+    blacklistBtn.style.display = isFullRandom ? "inline-block" : "none";
   }
 
   renderModalRows(members, currentSlots, isFullRandom);
@@ -661,6 +667,17 @@ function updateModalLabels() {
       label.innerHTML = `<b>${idx + 1}人目:</b>`;
     }
   });
+
+  // オーダー設定画面が開いている時にラジオボタンを変えた場合にもボタンの表示/非表示を動的に切り替える
+  const blacklistBtn = document.getElementById("btnModalCharBlacklist");
+  const fillBtn = document.getElementById("btnFillAll");
+  const isFullRandom = (mode === 'fullRandom');
+  if (blacklistBtn) {
+    blacklistBtn.style.display = isFullRandom ? "inline-block" : "none";
+  }
+  if (fillBtn) {
+    fillBtn.style.display = isFullRandom ? "none" : "inline-block";
+  }
 }
 
 function fillFullRandomModal() {
