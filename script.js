@@ -36,7 +36,9 @@ let appState = {
   team2Orders: { match: [], bench: [] },
   slotCount: 16,
   isOrderSet: false,
-  allowedCharIds: allCharacters.map(c => c.id)
+  // 1P・2P個別の許可キャラクターIDリスト（デフォルトは全キャラ）
+  team1AllowedCharIds: allCharacters.map(c => c.id),
+  team2AllowedCharIds: allCharacters.map(c => c.id)
 };
 
 let manualTeams = { "1P": [], "2P": [] };
@@ -51,8 +53,12 @@ function normalizeAppState() {
   if (!appState.masterPlayers || appState.masterPlayers.length === 0) {
     appState.masterPlayers = [...defaultPlayers];
   }
-  if (!appState.allowedCharIds || !Array.isArray(appState.allowedCharIds) || appState.allowedCharIds.length === 0) {
-    appState.allowedCharIds = allCharacters.map(c => c.id);
+  // 既存データ互換性対応
+  if (!appState.team1AllowedCharIds || !Array.isArray(appState.team1AllowedCharIds) || appState.team1AllowedCharIds.length === 0) {
+    appState.team1AllowedCharIds = appState.allowedCharIds ? [...appState.allowedCharIds] : allCharacters.map(c => c.id);
+  }
+  if (!appState.team2AllowedCharIds || !Array.isArray(appState.team2AllowedCharIds) || appState.team2AllowedCharIds.length === 0) {
+    appState.team2AllowedCharIds = appState.allowedCharIds ? [...appState.allowedCharIds] : allCharacters.map(c => c.id);
   }
   if (Array.isArray(appState.team1Orders)) {
     appState.team1Orders = { match: appState.team1Orders, bench: [] };
@@ -91,7 +97,6 @@ window.onload = function() {
     if (slotSelect) slotSelect.value = appState.slotCount;
     updateRuleOptionLabels();
     renderMasterChecklist();
-    renderCharBlacklistUI();
     toggleTeamMode();
     renderDisplay();
   } else {
@@ -106,7 +111,6 @@ window.onload = function() {
         document.getElementById("slotCountSelect").value = appState.slotCount;
         updateRuleOptionLabels();
         renderMasterChecklist();
-        renderCharBlacklistUI();
         toggleTeamMode();
         renderDisplay();
       } else {
@@ -141,7 +145,6 @@ function syncToFirebase() {
       localStorage.setItem(LOCAL_STORAGE_STATE_KEY, JSON.stringify(appState));
     } catch (e) {}
     renderMasterChecklist();
-    renderCharBlacklistUI();
     renderDisplay();
     return;
   }
@@ -311,7 +314,7 @@ function deletePlayer(index) {
 }
 
 // -------------------------------------------------------------
-// 出現キャラ制限（ブラックリスト）モーダル・設定関連の関数
+// 出現キャラ制限（ブラックリスト）モーダル・設定関連の関数（1P/2P個別対応）
 // -------------------------------------------------------------
 function openCharBlacklistModal() {
   renderCharBlacklistUI();
@@ -327,12 +330,14 @@ function renderCharBlacklistUI() {
   if (!container) return;
   container.innerHTML = "";
 
-  if (!appState.allowedCharIds || appState.allowedCharIds.length === 0) {
-    appState.allowedCharIds = allCharacters.map(c => c.id);
+  // 現在開いているチーム（currentModalTeam: '1' または '2'）の制限リストを取得
+  let allowedList = (currentModalTeam === '1') ? appState.team1AllowedCharIds : appState.team2AllowedCharIds;
+  if (!allowedList || allowedList.length === 0) {
+    allowedList = allCharacters.map(c => c.id);
   }
 
   allCharacters.forEach(c => {
-    const isChecked = appState.allowedCharIds.includes(c.id);
+    const isChecked = allowedList.includes(c.id);
     const item = document.createElement("div");
     item.className = `char-blacklist-item ${isChecked ? '' : 'is-disabled'}`;
     item.title = c.name;
@@ -345,42 +350,52 @@ function renderCharBlacklistUI() {
 }
 
 function toggleAllowedChar(charId, isChecked) {
-  if (!appState.allowedCharIds) appState.allowedCharIds = [];
+  let allowedList = (currentModalTeam === '1') ? appState.team1AllowedCharIds : appState.team2AllowedCharIds;
+  if (!allowedList) allowedList = [];
+
   if (isChecked) {
-    if (!appState.allowedCharIds.includes(charId)) {
-      appState.allowedCharIds.push(charId);
+    if (!allowedList.includes(charId)) {
+      allowedList.push(charId);
     }
   } else {
-    if (appState.allowedCharIds.length <= 1) {
+    if (allowedList.length <= 1) {
       alert("少なくとも1体以上のキャラクターを選択してください。");
       renderCharBlacklistUI();
       return;
     }
-    appState.allowedCharIds = appState.allowedCharIds.filter(id => id !== charId);
+    allowedList = allowedList.filter(id => id !== charId);
+  }
+
+  if (currentModalTeam === '1') {
+    appState.team1AllowedCharIds = allowedList;
+  } else {
+    appState.team2AllowedCharIds = allowedList;
   }
   syncToFirebase();
 }
 
 function selectAllAllowedChars(enableAll) {
-  if (enableAll) {
-    appState.allowedCharIds = allCharacters.map(c => c.id);
+  let allowedList = enableAll ? allCharacters.map(c => c.id) : [allCharacters[0].id];
+  if (currentModalTeam === '1') {
+    appState.team1AllowedCharIds = allowedList;
   } else {
-    appState.allowedCharIds = [allCharacters[0].id];
+    appState.team2AllowedCharIds = allowedList;
   }
   syncToFirebase();
+  renderCharBlacklistUI();
 }
 
-function getAvailableCharacters() {
-  // 全員完全ランダム（fullRandom）以外のモードでは、キャラ制限をかけずに全キャラを返す
+function getAvailableCharactersForTeam(teamKey) {
   const modeElement = document.querySelector('input[name="orderMode"]:checked');
   if (!modeElement || modeElement.value !== 'fullRandom') {
     return allCharacters;
   }
 
-  if (!appState.allowedCharIds || appState.allowedCharIds.length === 0) {
+  const allowedList = (teamKey === '1') ? appState.team1AllowedCharIds : appState.team2AllowedCharIds;
+  if (!allowedList || allowedList.length === 0) {
     return allCharacters;
   }
-  const filtered = allCharacters.filter(c => appState.allowedCharIds.includes(c.id));
+  const filtered = allCharacters.filter(c => allowedList.includes(c.id));
   return filtered.length > 0 ? filtered : allCharacters;
 }
 
@@ -699,7 +714,8 @@ function fillFullRandomModal() {
   }
   playerPool = playerPool.slice(0, slotCount);
 
-  const availableChars = getAvailableCharacters();
+  // チーム別の許可キャラリストから抽選
+  const availableChars = getAvailableCharactersForTeam(currentModalTeam);
   let shuffledChars = [...availableChars].sort(() => Math.random() - 0.5);
 
   rows.forEach((row, idx) => {
@@ -771,7 +787,7 @@ function saveOrderModal() {
     targetOrders.match = finalOrder;
     targetOrders.bench = [];
   } else if (mode === 'fullRandom') {
-    const availableChars = getAvailableCharacters();
+    const availableChars = getAvailableCharactersForTeam(currentModalTeam);
     let shuffledChars = [...availableChars].sort(() => Math.random() - 0.5);
     let fullRandomOrder = tempSelections.map((slot, idx) => {
       const chosenChar = shuffledChars[idx % shuffledChars.length];
@@ -871,63 +887,4 @@ function renderTeamDisplay(teamKey, members, ordersObj) {
             <img class="${faceClass}" src="${charInfo.icon}" onerror="handleImgError(this)">
             <div class="player-info">
               <div class="player-name" title="${escapeHTML(slot.name)}">${slot.name ? escapeHTML(slot.name) : '未設定'}</div>
-              <div class="char-name">${charInfo.name}</div>
-            </div>
-          `;
-        } else {
-          card.innerHTML = `
-            <span class="order-num">${idx + 1}.</span>
-            <img class="${faceClass}" src="image/secret.png" onerror="handleImgError(this)">
-            <div class="player-info">
-              <div class="player-name">？？？</div>
-              <div class="char-name">（伏せ）</div>
-            </div>
-          `;
-        }
-
-        card.onclick = () => {
-          if (isCounterPickMode && idx > 0) {
-            moveMatchToBench(teamKey, idx);
-          } else {
-            slot.revealed = !slot.revealed;
-            syncToFirebase();
-          }
-        };
-
-        matchContainer.appendChild(card);
-      });
-    }
-
-    if (ordersObj.bench && ordersObj.bench.length > 0) {
-      if (benchCol) benchCol.style.display = 'block';
-      ordersObj.bench.forEach((slot, idx) => {
-        const card = document.createElement("div");
-        const charInfo = allCharacters.find(c => c.id === slot.charId) || { name: "未選択", icon: "" };
-        card.className = "player-card";
-        
-        card.innerHTML = `
-          <img class="${faceClass}" src="${charInfo.icon}" onerror="handleImgError(this)">
-          <div class="player-info">
-            <div class="player-name" title="${escapeHTML(slot.name)}">${slot.name ? escapeHTML(slot.name) : '未設定'}</div>
-            <div class="char-name">${charInfo.name}</div>
-          </div>
-        `;
-
-        card.onclick = () => {
-          moveBenchToMatch(teamKey, idx);
-        };
-
-        benchContainer.appendChild(card);
-      });
-    } else {
-      if (benchCol) benchCol.style.display = 'none';
-    }
-  }
-}
-
-function escapeHTML(str) {
-  if (!str) return "";
-  return str.replace(/[&<>"']/g, function(m) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
-  });
-}
+              <div class
