@@ -1,946 +1,398 @@
-// ==========================================
-// スパ2X キャラ戦 チーム管理＆OBSツール - script.js
-// ==========================================
-
-const firebaseConfig = {
-  apiKey: "AIzaSyDMgiXpRGBLJofwxWEh0pG5b3FQ7yZNLK8",
-  authDomain: "sf2x-app.firebaseapp.com",
-  projectId: "sf2x-app",
-  storageBucket: "sf2x-app.firebasestorage.app",
-  messagingSenderId: "447610198262",
-  appId: "1:447610198262:web:1a9576f2d6696518caf4d7",
-  measurementId: "G-141DL20YTK"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
-
-const urlParams = new URLSearchParams(window.location.search);
-const roomParam = urlParams.get('room');
-
-let isLocalMode = !roomParam;
-let currentRoom = roomParam || null;
-const LOCAL_STORAGE_STATE_KEY = 'sf2x_local_state';
-
-const baseChars = ["リュウ","ケン","本田","春麗","ブランカ","ザンギエフ","ガイル","ダルシム","ホーク","キャミィ","フェイロン","ディージェイ","バイソン","バルログ","サガット","ベガ"];
-const allCharacters = baseChars.map((name, i) => ({
-  id: `x_${i}`, name: `X ${name}`, icon: `image/x_${i}.png`
-}));
-
-const defaultPlayers = ["ウメハラ", "ヌキ", "ハイタニ", "サコー", "ナカム～", "ぐっち", "こたか", "サシシ"];
-
-let appState = {
-  masterPlayers: [...defaultPlayers],
-  team1Members: [],
-  team2Members: [],
-  team1Orders: { match: [], bench: [] },
-  team2Orders: { match: [], bench: [] },
-  slotCount: 16,
-  isOrderSet: false,
-  team1AllowedCharIds: allCharacters.map(c => c.id),
-  team2AllowedCharIds: allCharacters.map(c => c.id)
-};
-
-let manualTeams = { "1P": [], "2P": [] };
-
-let currentRole = 'pc_all';
-let currentModalTeam = '1';
-let sortableInstance = null;
-let activeCharTargetInput = null;
-
-function normalizeAppState() {
-  if (!appState.slotCount) appState.slotCount = 16;
-  if (!appState.masterPlayers || appState.masterPlayers.length === 0) {
-    appState.masterPlayers = [...defaultPlayers];
-  }
-  if (!appState.team1AllowedCharIds || !Array.isArray(appState.team1AllowedCharIds) || appState.team1AllowedCharIds.length === 0) {
-    appState.team1AllowedCharIds = appState.allowedCharIds ? [...appState.allowedCharIds] : allCharacters.map(c => c.id);
-  }
-  if (!appState.team2AllowedCharIds || !Array.isArray(appState.team2AllowedCharIds) || appState.team2AllowedCharIds.length === 0) {
-    appState.team2AllowedCharIds = appState.allowedCharIds ? [...appState.allowedCharIds] : allCharacters.map(c => c.id);
-  }
-  if (Array.isArray(appState.team1Orders)) {
-    appState.team1Orders = { match: appState.team1Orders, bench: [] };
-  }
-  if (Array.isArray(appState.team2Orders)) {
-    appState.team2Orders = { match: appState.team2Orders, bench: [] };
-  }
+:root {
+  --bg-color: #0f0f13;
+  --panel-bg: #1a1a24;
+  --card-bg: #252533;
+  --text-color: #ffffff;
+  --1p-color: #8d0801;
+  --2p-color: #1d3557;
 }
 
-function loadLocalState() {
-  try {
-    const saved = localStorage.getItem(LOCAL_STORAGE_STATE_KEY);
-    if (saved) {
-      appState = JSON.parse(saved);
-    }
-  } catch (e) {}
-  normalizeAppState();
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  margin: 0;
+  padding: 10px;
 }
 
-function hideRoomUIForLocalMode() {
-  const roomControls = document.querySelector('.room-header-controls');
-  if (roomControls) roomControls.style.display = 'none';
+h2, h3 { margin: 5px 0 10px 0; }
 
-  const deviceRoleSection = document.getElementById('deviceRoleSection');
-  if (deviceRoleSection) deviceRoleSection.style.display = 'none';
+.admin-summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.manual-link {
+  color: #ff9f1c;
+  font-size: 0.9em;
+  text-decoration: none;
+  background: #252533;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid #444;
+  font-weight: normal;
+}
+.manual-link:hover {
+  background: #333348;
+  color: #fff;
 }
 
-window.onload = function() {
-  initSlotSelectOptions();
-  initCharPalette();
-
-  if (isLocalMode) {
-    hideRoomUIForLocalMode();
-    loadLocalState();
-    const slotSelect = document.getElementById("slotCountSelect");
-    if (slotSelect) slotSelect.value = appState.slotCount;
-    updateRuleOptionLabels();
-    renderMasterChecklist();
-    toggleTeamMode();
-    renderDisplay();
-  } else {
-    document.getElementById("currentRoomDisplay").textContent = currentRoom;
-    document.getElementById("roomInput").value = currentRoom;
-
-    db.ref(`sf2x_rooms/${currentRoom}`).on('value', (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        appState = data;
-        normalizeAppState();
-        document.getElementById("slotCountSelect").value = appState.slotCount;
-        updateRuleOptionLabels();
-        renderMasterChecklist();
-        toggleTeamMode();
-        renderDisplay();
-      } else {
-        syncToFirebase();
-      }
-    });
-  }
-
-  document.addEventListener('click', (e) => {
-    const palette = document.getElementById('charPalette');
-    if (!e.target.closest('.char-picker-btn') && !e.target.closest('#charPalette')) {
-      palette.style.display = 'none';
-    }
-  });
-};
-
-function initSlotSelectOptions() {
-  const select = document.getElementById("slotCountSelect");
-  select.innerHTML = "";
-  for (let i = 2; i <= 16; i++) {
-    const opt = document.createElement("option");
-    opt.value = i;
-    opt.textContent = `${i}枠 (${i}キャラ戦)`;
-    if (i === 16) opt.selected = true;
-    select.appendChild(opt);
-  }
+.admin-panel {
+  background: var(--panel-bg);
+  border: 1px solid #333;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  overflow: hidden;
 }
 
-function syncToFirebase() {
-  if (isLocalMode) {
-    try {
-      localStorage.setItem(LOCAL_STORAGE_STATE_KEY, JSON.stringify(appState));
-    } catch (e) {}
-    renderMasterChecklist();
-    renderDisplay();
-    return;
-  }
-  db.ref(`sf2x_rooms/${currentRoom}`).set(appState);
+.admin-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #20202d;
+  cursor: pointer;
+  user-select: none;
+  font-weight: bold;
+  font-size: 1.1em;
+}
+.admin-summary:hover {
+  background: #282838;
 }
 
-function changeRoom() {
-  const newRoom = document.getElementById("roomInput").value.trim();
-  if (!newRoom) return;
-  window.location.href = `${window.location.pathname}?room=${encodeURIComponent(newRoom)}`;
+.admin-body {
+  padding: 12px;
 }
 
-function changeSlotCount(count) {
-  appState.slotCount = parseInt(count, 10);
-  updateRuleOptionLabels();
-  syncToFirebase();
+.room-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85em;
+  font-weight: normal;
 }
 
-function updateRuleOptionLabels() {
-  const cnt = appState.slotCount || 16;
-  const labelFull = document.getElementById("labelFullRandom");
-  const labelBoss = document.getElementById("labelBossFixed");
-  const labelCounter = document.getElementById("labelCounterPick");
-  if (labelFull) labelFull.textContent = `1〜${cnt}人目シャッフル（全員完全ランダム）`;
-  if (labelBoss) labelBoss.textContent = `1〜${cnt - 1}人目シャッフル ＋ 大将(${cnt}人目)固定`;
-  if (labelCounter) labelCounter.textContent = `先鋒申告 ＋ 2〜${cnt}人目被せ`;
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+
+textarea, select, input[type="text"] {
+  background: #101015;
+  color: #fff;
+  border: 1px solid #444;
+  padding: 6px;
+  border-radius: 4px;
+  box-sizing: border-box;
 }
 
-function initCharPalette() {
-  const palette = document.getElementById('charPalette');
-  palette.innerHTML = '';
-  allCharacters.forEach(c => {
-    const item = document.createElement('div');
-    item.className = 'char-palette-item';
-    item.title = c.name;
-    item.innerHTML = `<img src="${c.icon}" onerror="this.src=''"><span style="font-size:0.65em;">${c.name.replace('X ','')}</span>`;
-    item.onclick = () => selectCharFromPalette(c.id);
-    palette.appendChild(item);
-  });
+.btn {
+  background: #3a86ff;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.btn:hover { background: #2563eb; }
+.btn-danger { background: #d90429; }
+.btn-success { background: #38b000; }
+.btn-warning { background: #ff9f1c; color: #000; }
+.btn-purple { background: #8338ec; color: #fff; }
+.btn-purple:hover { background: #6c11d9; }
+
+.btn-arrow {
+  background: #333348;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 0.8em;
+  cursor: pointer;
+}
+.btn-arrow:hover { background: #444466; }
+
+.mode-select {
+  background: #111118;
+  padding: 8px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-size: 0.9em;
 }
 
-function openCharPalette(e, hiddenInputId) {
-  e.stopPropagation();
-  activeCharTargetInput = document.getElementById(hiddenInputId);
-  const btn = e.currentTarget;
-  const palette = document.getElementById('charPalette');
-  
-  const rect = btn.getBoundingClientRect();
-  palette.style.top = `${rect.bottom + window.scrollY + 4}px`;
-  palette.style.left = `${Math.min(rect.left + window.scrollX, window.innerWidth - 360)}px`;
-  palette.style.display = 'grid';
+.member-checklist {
+  background: #101015;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 8px;
+  max-height: 140px;
+  overflow-y: auto;
+  margin-bottom: 8px;
 }
 
-function selectCharFromPalette(charId) {
-  if (!activeCharTargetInput) return;
-  activeCharTargetInput.value = charId;
-  
-  const charInfo = allCharacters.find(c => c.id === charId);
-  const btn = activeCharTargetInput.nextElementSibling;
-  btn.querySelector('img').src = charInfo ? charInfo.icon : '';
-  btn.querySelector('span').textContent = charInfo ? charInfo.name : '選択...';
-
-  document.getElementById('charPalette').style.display = 'none';
+.member-item {
+  display: inline-flex;
+  align-items: center;
+  background: #20202c;
+  border: 1px solid #333;
+  padding: 3px 8px;
+  border-radius: 4px;
+  margin-right: 6px;
+  margin-bottom: 6px;
 }
 
-function setDeviceRole(role) {
-  currentRole = role;
-  const btnP1 = document.getElementById("btnOpenP1");
-  const btnP2 = document.getElementById("btnOpenP2");
-
-  if (role === 'p1_only') {
-    btnP1.style.display = "block";
-    btnP2.style.display = "none";
-  } else if (role === 'p2_only') {
-    btnP1.style.display = "none";
-    btnP2.style.display = "block";
-  } else {
-    btnP1.style.display = "block";
-    btnP2.style.display = "block";
-  }
-  renderDisplay();
+.btn-del {
+  background: transparent;
+  color: #ff5555;
+  border: none;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 1.1em;
+  padding: 0 2px;
 }
 
-function createOrdersEmpty() {
-  let orders = [];
-  const cnt = appState.slotCount || 16;
-  for (let i = 0; i < cnt; i++) {
-    orders.push({ name: "", charId: "", revealed: false });
-  }
-  return { match: orders, bench: [] };
+/* --- キャラ出禁設定（ブラックリスト）モーダル内グリッド --- */
+.char-blacklist-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+  padding: 8px;
+  background: #101015;
+  border: 1px solid #333;
+  border-radius: 4px;
 }
 
-function getStorageKey() {
-  return `sf2x_checklist_${currentRoom || 'local'}`;
+.char-blacklist-item {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #20202d;
+  border: 2px solid #555;
+  border-radius: 6px;
+  padding: 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.1s, background 0.1s, border-color 0.1s;
 }
 
-function renderMasterChecklist() {
-  const container = document.getElementById("masterChecklist");
-  if (!container) return;
-  container.innerHTML = "";
-  if (!appState.masterPlayers) appState.masterPlayers = [...defaultPlayers];
-
-  let savedChecks = {};
-  try {
-    const saved = localStorage.getItem(getStorageKey());
-    if (saved) savedChecks = JSON.parse(saved);
-  } catch(e) {}
-  
-  appState.masterPlayers.forEach((p, idx) => {
-    const item = document.createElement("div");
-    item.className = "member-item";
-    
-    let isChecked = (savedChecks[p] !== undefined) ? savedChecks[p] : true;
-
-    item.innerHTML = `
-      <label><input type="checkbox" class="player-chk" value="${escapeHTML(p)}" ${isChecked ? 'checked' : ''} onchange="saveChecklistState()"> ${escapeHTML(p)}</label>
-      <button class="btn-del" onclick="deletePlayer(${idx})">×</button>
-    `;
-    container.appendChild(item);
-  });
-  updateManualTeamLists();
+.char-blacklist-item:hover {
+  background: #2a2a3c;
+  border-color: #ff9f1c;
+  transform: scale(1.05);
 }
 
-function saveChecklistState() {
-  let states = {};
-  document.querySelectorAll(".player-chk").forEach(cb => {
-    states[cb.value] = cb.checked;
-  });
-  try {
-    localStorage.setItem(getStorageKey(), JSON.stringify(states));
-  } catch(e) {}
-  updateManualTeamLists();
+.char-blacklist-item.is-disabled {
+  opacity: 0.3;
+  filter: grayscale(100%);
+  background: #15151a;
+  border-color: #333;
 }
 
-function addNewPlayer() {
-  const input = document.getElementById("newPlayerInput");
-  const name = input.value.trim();
-  if (!name) return;
-  if (!appState.masterPlayers.includes(name)) {
-    appState.masterPlayers.push(name);
-    try {
-      let saved = JSON.parse(localStorage.getItem(getStorageKey()) || "{}");
-      saved[name] = true;
-      localStorage.setItem(getStorageKey(), JSON.stringify(saved));
-    } catch(e) {}
-    syncToFirebase();
-  }
-  input.value = "";
+.char-blacklist-item input[type="checkbox"] {
+  display: none !important;
 }
 
-function handleNewPlayerKeyDown(e) {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    addNewPlayer();
-  }
+.char-blacklist-item img {
+  width: 32px !important;
+  height: 32px !important;
+  max-width: 32px !important;
+  max-height: 32px !important;
+  object-fit: cover;
+  border-radius: 3px;
+  display: block;
 }
 
-function deletePlayer(index) {
-  const pName = appState.masterPlayers[index];
-  appState.masterPlayers.splice(index, 1);
-  try {
-    let saved = JSON.parse(localStorage.getItem(getStorageKey()) || "{}");
-    delete saved[pName];
-    localStorage.setItem(getStorageKey(), JSON.stringify(saved));
-  } catch(e) {}
-  syncToFirebase();
+.char-blacklist-item span {
+  display: none !important;
 }
 
-// -------------------------------------------------------------
-// 出現キャラ制限（ブラックリスト）モーダル・設定関連の関数（パネル全体クリック対応）
-// -------------------------------------------------------------
-function openCharBlacklistModal() {
-  renderCharBlacklistUI();
-  document.getElementById("charBlacklistModal").style.display = "flex";
+/* --- OBS表示部分：左右2列＆上下積み・横幅280px固定 --- */
+.obs-display {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  max-width: 280px;
+  box-sizing: border-box;
 }
 
-function closeCharBlacklistModal() {
-  document.getElementById("charBlacklistModal").style.display = "none";
+.team-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
-function renderCharBlacklistUI() {
-  const container = document.getElementById("charBlacklistGrid");
-  if (!container) return;
-  container.innerHTML = "";
-
-  let allowedList = (currentModalTeam === '1') ? appState.team1AllowedCharIds : appState.team2AllowedCharIds;
-  if (!allowedList || allowedList.length === 0) {
-    allowedList = allCharacters.map(c => c.id);
-  }
-
-  allCharacters.forEach(c => {
-    const isChecked = allowedList.includes(c.id);
-    const item = document.createElement("div");
-    item.className = `char-blacklist-item ${isChecked ? '' : 'is-disabled'}`;
-    item.title = c.name;
-    // パネル全体をクリックした時にカラー/グレーアウトがトグルする
-    item.onclick = () => toggleAllowedChar(c.id);
-    item.innerHTML = `
-      <img src="${c.icon}" onerror="this.src=''">
-    `;
-    container.appendChild(item);
-  });
+.team-column {
+  background: var(--panel-bg);
+  border-radius: 8px;
+  padding: 5px;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
-function toggleAllowedChar(charId) {
-  let allowedList = (currentModalTeam === '1') ? appState.team1AllowedCharIds : appState.team2AllowedCharIds;
-  if (!allowedList) allowedList = [];
+.team-title {
+  text-align: center;
+  font-size: 0.85em;
+  font-weight: bold;
+  padding: 3px 2px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  line-height: 1.15;
+}
+.p1-header { background: var(--1p-color); }
+.p2-header { background: var(--2p-color); }
+.bench-header { background: #333; color: #aaa; }
 
-  const isCurrentlyChecked = allowedList.includes(charId);
+.player-card {
+  display: flex;
+  align-items: center;
+  background: var(--card-bg);
+  margin-bottom: 3px;
+  padding: 3px 5px;
+  border-radius: 4px;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  height: 40px;
+  transition: transform 0.1s, background 0.1s;
+  overflow: hidden;
+}
+.player-card:hover { background: #323246; transform: scale(1.01); }
 
-  if (isCurrentlyChecked) {
-    if (allowedList.length <= 1) {
-      alert("少なくとも1体以上のキャラクターを選択してください。");
-      return;
-    }
-    allowedList = allowedList.filter(id => id !== charId);
-  } else {
-    allowedList.push(charId);
-  }
-
-  if (currentModalTeam === '1') {
-    appState.team1AllowedCharIds = allowedList;
-  } else {
-    appState.team2AllowedCharIds = allowedList;
-  }
-  syncToFirebase();
-  renderCharBlacklistUI();
+.order-num { 
+  font-weight: bold; 
+  width: 18px; 
+  color: #aaa; 
+  text-align: right; 
+  font-size: 0.85em; 
+  flex-shrink: 0; 
 }
 
-function selectAllAllowedChars(enableAll) {
-  let allowedList = enableAll ? allCharacters.map(c => c.id) : [allCharacters[0].id];
-  if (currentModalTeam === '1') {
-    appState.team1AllowedCharIds = allowedList;
-  } else {
-    appState.team2AllowedCharIds = allowedList;
-  }
-  syncToFirebase();
-  renderCharBlacklistUI();
+.player-card img.char-face,
+.char-face { 
+  width: 32px !important; 
+  height: 32px !important; 
+  max-width: 32px !important;
+  max-height: 32px !important;
+  object-fit: cover; 
+  border-radius: 3px; 
+  background: #000; 
+  flex-shrink: 0;
+}
+.p2-face {
+  transform: scaleX(-1);
+}
+.char-face.load-error { display: none; }
+
+.player-info { 
+  flex: 1; 
+  overflow: hidden; 
+  min-width: 0; 
 }
 
-function getAvailableCharactersForTeam(teamKey) {
-  const modeElement = document.querySelector('input[name="orderMode"]:checked');
-  if (!modeElement || modeElement.value !== 'fullRandom') {
-    return allCharacters;
-  }
-
-  const allowedList = (teamKey === '1') ? appState.team1AllowedCharIds : appState.team2AllowedCharIds;
-  if (!allowedList || allowedList.length === 0) {
-    return allCharacters;
-  }
-  const filtered = allCharacters.filter(c => allowedList.includes(c.id));
-  return filtered.length > 0 ? filtered : allCharacters;
+.player-name { 
+  font-size: 0.9em; 
+  font-weight: bold; 
+  white-space: nowrap; 
+  overflow: hidden; 
+  text-overflow: ellipsis; 
 }
 
-// -------------------------------------------------------------
-// 手動選択・ドラッグ自由編成モード関連の関数
-// -------------------------------------------------------------
-function toggleTeamMode() {
-  const mode = document.querySelector('input[name="splitMode"]:checked').value;
-  const panel = document.getElementById('manualTeamPanel');
-  if (mode === 'manual') {
-    panel.style.display = 'block';
-    const checkboxes = document.querySelectorAll(".player-chk:checked");
-    const active = Array.from(checkboxes).map(cb => cb.value);
-    
-    active.forEach(m => {
-      if (!manualTeams['1P'].includes(m) && !manualTeams['2P'].includes(m)) {
-        manualTeams['1P'].push(m);
-      }
-    });
-    manualTeams['1P'] = manualTeams['1P'].filter(m => active.includes(m));
-    manualTeams['2P'] = manualTeams['2P'].filter(m => active.includes(m));
-    updateManualTeamLists();
-  } else {
-    panel.style.display = 'none';
-  }
+.char-name { 
+  display: none !important; 
 }
 
-function updateManualTeamLists() {
-  const list1 = document.getElementById('manual1pList');
-  const list2 = document.getElementById('manual2pList');
-  if (!list1 || !list2) return;
+.is-hidden .player-name { color: #666; }
 
-  list1.innerHTML = '';
-  list2.innerHTML = '';
-
-  manualTeams['1P'].forEach(name => {
-    list1.appendChild(createManualCard(name, '1P'));
-  });
-  manualTeams['2P'].forEach(name => {
-    list2.appendChild(createManualCard(name, '2P'));
-  });
-
-  const c1 = document.getElementById('manual1pCount');
-  const c2 = document.getElementById('manual2pCount');
-  if (c1) c1.innerText = manualTeams['1P'].length;
-  if (c2) c2.innerText = manualTeams['2P'].length;
+.modal {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.8);
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+}
+.modal-content {
+  background: var(--panel-bg);
+  padding: 20px;
+  border-radius: 8px;
+  max-width: 850px;
+  width: 95%;
+  max-height: 85vh;
+  overflow-y: auto;
 }
 
-function createManualCard(name, team) {
-  const div = document.createElement('div');
-  div.className = 'player-card';
-  div.draggable = true;
-  div.style.cursor = 'grab';
-  div.style.justifyContent = 'space-between';
-  div.style.padding = '3px 6px';
-  div.style.height = '32px';
-  div.style.marginBottom = '2px';
-
-  div.addEventListener('dragstart', (e) => {
-    e.dataTransfer.setData('text/plain', JSON.stringify({ name, fromTeam: team }));
-  });
-
-  const oppositeTeam = team === '1P' ? '2P' : '1P';
-  const arrowIcon = team === '1P' ? '▶' : '◀';
-
-  div.innerHTML = `
-    <span style="font-size: 0.85em; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHTML(name)}</span>
-    <button type="button" class="btn-arrow" onclick="moveManualMember('${escapeHTML(name)}', '${team}', '${oppositeTeam}')">${arrowIcon}</button>
-  `;
-  return div;
+.order-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+  background: #20202d;
+  padding: 6px;
+  border-radius: 4px;
+  border: 1px solid #333;
 }
 
-function allowDrop(e) {
-  e.preventDefault();
+.drag-handle {
+  cursor: grab;
+  color: #888;
+  font-size: 1.2em;
+  padding: 0 4px;
+  user-select: none;
+}
+.drag-handle:active { cursor: grabbing; }
+
+.arrow-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-function dropToTeam(e, targetTeam) {
-  e.preventDefault();
-  try {
-    const data = JSON.parse(e.dataTransfer.getData('text/plain'));
-    moveManualMember(data.name, data.fromTeam, targetTeam);
-  } catch(err) {}
+.char-picker-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #101015;
+  border: 1px solid #444;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  min-width: 140px;
 }
+.char-picker-btn:hover { background: #2a2a38; }
 
-function moveManualMember(name, fromTeam, toTeam) {
-  if (fromTeam === toTeam) return;
-  manualTeams[fromTeam] = manualTeams[fromTeam].filter(m => m !== name);
-  if (!manualTeams[toTeam].includes(name)) {
-    manualTeams[toTeam].push(name);
-  }
-  updateManualTeamLists();
+.char-palette {
+  display: none;
+  position: absolute;
+  background: #15151f;
+  border: 2px solid #3a86ff;
+  border-radius: 8px;
+  padding: 8px;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+  z-index: 200;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.8);
 }
-
-// -------------------------------------------------------------
-// チーム自動振り分け
-// -------------------------------------------------------------
-function makeRandomTeams() {
-  const checkboxes = document.querySelectorAll(".player-chk:checked");
-  const selectedPlayers = Array.from(checkboxes).map(cb => cb.value);
-  if (selectedPlayers.length < 1) {
-    alert("参加者を1名以上チェックしてください。");
-    return;
-  }
-
-  const splitMode = document.querySelector('input[name="splitMode"]:checked').value;
-
-  if (splitMode === 'normal') {
-    let shuffled = [...selectedPlayers].sort(() => Math.random() - 0.5);
-    const half = Math.ceil(shuffled.length / 2);
-    appState.team1Members = shuffled.slice(0, half);
-    appState.team2Members = shuffled.slice(half);
-  } else if (splitMode === 'manual') {
-    appState.team1Members = [...manualTeams['1P']];
-    appState.team2Members = [...manualTeams['2P']];
-  }
-
-  appState.team1Orders = createOrdersEmpty();
-  appState.team2Orders = createOrdersEmpty();
-  appState.isOrderSet = false;
-
-  syncToFirebase();
+.char-palette-item {
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  padding: 2px;
+  text-align: center;
 }
-
-function openOrderModal(teamKey) {
-  if (currentRole === 'p1_only' && teamKey === '2') return;
-  if (currentRole === 'p2_only' && teamKey === '1') return;
-
-  currentModalTeam = teamKey;
-  const members = (teamKey === '1') ? appState.team1Members : appState.team2Members;
-  const ordersObj = (teamKey === '1') ? appState.team1Orders : appState.team2Orders;
-  const slotCount = appState.slotCount || 16;
-  
-  if (!members || members.length === 0) {
-    alert("先にチーム分けを行ってください。");
-    return;
-  }
-
-  let currentSlots = [...(ordersObj.match || []), ...(ordersObj.bench || [])];
-  while (currentSlots.length < slotCount) {
-    currentSlots.push({ name: "", charId: "", revealed: false });
-  }
-  if (currentSlots.length > slotCount) {
-    currentSlots = currentSlots.slice(0, slotCount);
-  }
-
-  const hasAnyName = currentSlots.some(slot => slot.name !== "");
-  if (!hasAnyName) {
-    const grouped = generateGroupedPlayerList(members);
-    currentSlots.forEach((slot, i) => { slot.name = grouped[i] || ""; });
-  }
-
-  document.getElementById("modalTitle").textContent = `${teamKey === '1' ? '🔴 1Pチーム' : '🔵 2Pチーム'} オーダー設定 (${slotCount}枠)`;
-  
-  const modeElement = document.querySelector('input[name="orderMode"]:checked');
-  const isFullRandom = modeElement && modeElement.value === 'fullRandom';
-  
-  const fillBtn = document.getElementById("btnFillAll");
-  if (fillBtn) {
-    fillBtn.style.display = isFullRandom ? "none" : "inline-block";
-  }
-
-  const blacklistBtn = document.getElementById("btnModalCharBlacklist");
-  if (blacklistBtn) {
-    blacklistBtn.style.display = isFullRandom ? "inline-block" : "none";
-  }
-
-  renderModalRows(members, currentSlots, isFullRandom);
-  updateModalLabels();
-  document.getElementById("orderModal").style.display = "flex";
-
-  const el = document.getElementById('modalOrderRows');
-  if (sortableInstance) sortableInstance.destroy();
-  sortableInstance = new Sortable(el, {
-    handle: '.drag-handle',
-    animation: 150,
-    onEnd: function() {
-      updateModalLabels();
-    }
-  });
+.char-palette-item:hover {
+  border-color: #ff9f1c;
+  background: #333348;
 }
-
-function generateGroupedPlayerList(members) {
-  const slotCount = appState.slotCount || 16;
-  const mCount = members.length;
-  if (mCount === 0) return Array(slotCount).fill("");
-
-  const baseCount = Math.floor(slotCount / mCount);
-  const remainder = slotCount % mCount;
-
-  let result = [];
-  members.forEach((m, idx) => {
-    const count = baseCount + (idx < remainder ? 1 : 0);
-    for (let i = 0; i < count; i++) {
-      result.push(m);
-    }
-  });
-  return result;
-}
-
-function autoFillGroupedPlayers() {
-  const members = (currentModalTeam === '1') ? appState.team1Members : appState.team2Members;
-  if (!members || members.length === 0) return;
-
-  const grouped = generateGroupedPlayerList(members);
-  const rows = document.querySelectorAll("#modalOrderRows .order-row");
-
-  rows.forEach((row, idx) => {
-    row.querySelector(".m-name").value = grouped[idx] || "";
-  });
-}
-
-function renderModalRows(members, orders, isFullRandom = false) {
-  const container = document.getElementById("modalOrderRows");
-  container.innerHTML = "";
-
-  orders.forEach((slot, idx) => {
-    const row = document.createElement("div");
-    row.className = "order-row";
-
-    let nameOptions = `<option value="">-- 選択 --</option>` + members.map(p => 
-      `<option value="${escapeHTML(p)}" ${p === slot.name ? 'selected' : ''}>${escapeHTML(p)}</option>`
-    ).join("");
-
-    const charInfo = allCharacters.find(c => c.id === slot.charId);
-
-    if (isFullRandom) {
-      row.innerHTML = `
-        <span class="drag-handle">☰</span>
-        <div class="arrow-group">
-          <button type="button" class="btn-arrow" onclick="moveRowUp(this)">▲</button>
-          <button type="button" class="btn-arrow" onclick="moveRowDown(this)">▼</button>
-        </div>
-        <span class="slot-label" style="width:125px; font-size:0.9em;"><b>${idx + 1}人目:</b></span>
-        <select class="m-name" style="flex:1;">${nameOptions}</select>
-        <input type="hidden" class="m-char" value="">
-        <span style="font-size:0.85em; color:#888; padding:4px 8px;">(許可キャラから自動)</span>
-      `;
-    } else {
-      row.innerHTML = `
-        <span class="drag-handle">☰</span>
-        <div class="arrow-group">
-          <button type="button" class="btn-arrow" onclick="moveRowUp(this)">▲</button>
-          <button type="button" class="btn-arrow" onclick="moveRowDown(this)">▼</button>
-        </div>
-        <span class="slot-label" style="width:125px; font-size:0.9em;"><b>${idx + 1}人目:</b></span>
-        <select class="m-name" style="flex:1;">${nameOptions}</select>
-        
-        <input type="hidden" class="m-char" id="char_input_${idx}" value="${slot.charId || ''}">
-        <div class="char-picker-btn" onclick="openCharPalette(event, 'char_input_${idx}')">
-          <img class="char-face" src="${charInfo ? charInfo.icon : ''}" onerror="this.src=''">
-          <span style="font-size:0.85em; flex:1;">${charInfo ? charInfo.name : 'キャラ選択...'}</span>
-        </div>
-      `;
-    }
-    container.appendChild(row);
-  });
-}
-
-function moveRowUp(btn) {
-  const row = btn.closest('.order-row');
-  const prevRow = row.previousElementSibling;
-  if (prevRow) {
-    row.parentNode.insertBefore(row, prevRow);
-    updateModalLabels();
-  }
-}
-
-function moveRowDown(btn) {
-  const row = btn.closest('.order-row');
-  const nextRow = row.nextElementSibling;
-  if (nextRow) {
-    row.parentNode.insertBefore(nextRow, row);
-    updateModalLabels();
-  }
-}
-
-function updateModalLabels() {
-  const modeElement = document.querySelector('input[name="orderMode"]:checked');
-  if (!modeElement) return;
-  const mode = modeElement.value;
-  const labels = document.querySelectorAll(".slot-label");
-  const slotCount = appState.slotCount || 16;
-
-  labels.forEach((label, idx) => {
-    if (mode === 'counterPick' && idx === 0) {
-      label.innerHTML = `<b>1人目 <span style="color:#ff9f1c;">(先鋒申告)</span>:</b>`;
-    } else if (mode === 'bossFixed' && idx === slotCount - 1) {
-      label.innerHTML = `<b>${slotCount}人目 <span style="color:#ff9f1c;">(大将固定)</span>:</b>`;
-    } else {
-      label.innerHTML = `<b>${idx + 1}人目:</b>`;
-    }
-  });
-
-  const blacklistBtn = document.getElementById("btnModalCharBlacklist");
-  const fillBtn = document.getElementById("btnFillAll");
-  const isFullRandom = (mode === 'fullRandom');
-  if (blacklistBtn) {
-    blacklistBtn.style.display = isFullRandom ? "inline-block" : "none";
-  }
-  if (fillBtn) {
-    fillBtn.style.display = isFullRandom ? "none" : "inline-block";
-  }
-}
-
-function fillFullRandomModal() {
-  const members = (currentModalTeam === '1') ? appState.team1Members : appState.team2Members;
-  if (!members || members.length === 0) return;
-
-  const rows = document.querySelectorAll("#modalOrderRows .order-row");
-  const slotCount = appState.slotCount || 16;
-  
-  let playerPool = [];
-  while (playerPool.length < slotCount) {
-    let shuffledMembers = [...members].sort(() => Math.random() - 0.5);
-    playerPool = playerPool.concat(shuffledMembers);
-  }
-  playerPool = playerPool.slice(0, slotCount);
-
-  const availableChars = getAvailableCharactersForTeam(currentModalTeam);
-  let shuffledChars = [...availableChars].sort(() => Math.random() - 0.5);
-
-  rows.forEach((row, idx) => {
-    row.querySelector(".m-name").value = playerPool[idx];
-    
-    const charInput = row.querySelector(".m-char");
-    if (charInput) {
-      const charBtn = row.querySelector(".char-picker-btn");
-      const chosenChar = shuffledChars[idx % shuffledChars.length];
-
-      charInput.value = chosenChar.id;
-      if (charBtn) {
-        charBtn.querySelector('img').src = chosenChar.icon;
-        charBtn.querySelector('span').textContent = chosenChar.name;
-      }
-    }
-  });
-}
-
-function saveOrderModal() {
-  const mode = document.querySelector('input[name="orderMode"]:checked').value;
-  const targetOrders = (currentModalTeam === '1') ? appState.team1Orders : appState.team2Orders;
-  const rows = document.querySelectorAll("#modalOrderRows .order-row");
-  const slotCount = appState.slotCount || 16;
-
-  let tempSelections = [];
-  rows.forEach((row) => {
-    const charInput = row.querySelector(".m-char");
-    tempSelections.push({
-      name: row.querySelector(".m-name").value,
-      charId: charInput ? charInput.value : "",
-      revealed: false
-    });
-  });
-
-  if (mode !== 'fullRandom') {
-    let charCounts = {};
-    let duplicateChars = [];
-    tempSelections.forEach(slot => {
-      if (slot.charId) {
-        charCounts[slot.charId] = (charCounts[slot.charId] || 0) + 1;
-        if (charCounts[slot.charId] === 2) {
-          const cObj = allCharacters.find(c => c.id === slot.charId);
-          duplicateChars.push(cObj ? cObj.name : slot.charId);
-        }
-      }
-    });
-
-    if (duplicateChars.length > 0) {
-      let charNamesStr = duplicateChars.join("、");
-      let ok = confirm(`【注意】同じキャラクター（${charNamesStr} など）が2体以上選択されています。\n\nこのまま設定を完了してもよろしいですか？`);
-      if (!ok) {
-        return;
-      }
-    }
-  }
-
-  if (mode === 'counterPick') {
-    tempSelections[0].revealed = true;
-    for (let i = 1; i < tempSelections.length; i++) {
-      tempSelections[i].revealed = false;
-    }
-    targetOrders.match = [tempSelections[0]];
-    targetOrders.bench = tempSelections.slice(1);
-  } else if (mode === 'bossFixed') {
-    let topN = tempSelections.slice(0, slotCount - 1).sort(() => Math.random() - 0.5);
-    let finalOrder = [...topN, tempSelections[slotCount - 1]];
-    finalOrder.forEach(slot => slot.revealed = false);
-    targetOrders.match = finalOrder;
-    targetOrders.bench = [];
-  } else if (mode === 'fullRandom') {
-    const availableChars = getAvailableCharactersForTeam(currentModalTeam);
-    let shuffledChars = [...availableChars].sort(() => Math.random() - 0.5);
-    let fullRandomOrder = tempSelections.map((slot, idx) => {
-      const chosenChar = shuffledChars[idx % shuffledChars.length];
-      return {
-        name: slot.name,
-        charId: chosenChar.id,
-        revealed: false
-      };
-    });
-    targetOrders.match = fullRandomOrder;
-    targetOrders.bench = [];
-  } else {
-    targetOrders.match = tempSelections;
-    targetOrders.bench = [];
-  }
-
-  appState.isOrderSet = true;
-  closeOrderModal();
-  syncToFirebase();
-}
-
-function closeOrderModal() {
-  document.getElementById("orderModal").style.display = "none";
-}
-
-function handleImgError(img) {
-  img.classList.add('load-error');
-}
-
-function moveBenchToMatch(teamKey, benchIndex) {
-  const targetOrders = (teamKey === '1') ? appState.team1Orders : appState.team2Orders;
-  if (!targetOrders.bench || !targetOrders.bench[benchIndex]) return;
-
-  const movedChar = targetOrders.bench.splice(benchIndex, 1)[0];
-  movedChar.revealed = true;
-  targetOrders.match.push(movedChar);
-
-  syncToFirebase();
-}
-
-function moveMatchToBench(teamKey, matchIndex) {
-  const targetOrders = (teamKey === '1') ? appState.team1Orders : appState.team2Orders;
-  if (!targetOrders.match || !targetOrders.match[matchIndex]) return;
-
-  const movedChar = targetOrders.match.splice(matchIndex, 1)[0];
-  movedChar.revealed = false;
-  if (!targetOrders.bench) targetOrders.bench = [];
-  targetOrders.bench.push(movedChar);
-
-  syncToFirebase();
-}
-
-function renderDisplay() {
-  renderTeamDisplay('1', appState.team1Members, appState.team1Orders);
-  renderTeamDisplay('2', appState.team2Members, appState.team2Orders);
-}
-
-function renderTeamDisplay(teamKey, members, ordersObj) {
-  const matchContainer = document.getElementById(`team${teamKey}-match-display`);
-  const benchContainer = document.getElementById(`team${teamKey}-bench-display`);
-  const benchCol = document.getElementById(`team${teamKey}-bench-col`);
-  if (!matchContainer || !benchContainer) return;
-
-  matchContainer.innerHTML = "";
-  benchContainer.innerHTML = "";
-
-  if ((currentRole === 'p1_only' && teamKey === '2') || (currentRole === 'p2_only' && teamKey === '1')) {
-    matchContainer.innerHTML = `<div style="padding:20px; text-align:center; color:#666;">（非表示）</div>`;
-    benchContainer.innerHTML = `<div style="padding:20px; text-align:center; color:#666;">（非表示）</div>`;
-    return;
-  }
-
-  const faceClass = (teamKey === '2') ? "char-face p2-face" : "char-face";
-  const modeElement = document.querySelector('input[name="orderMode"]:checked');
-  const isCounterPickMode = modeElement && modeElement.value === 'counterPick';
-
-  if (!appState.isOrderSet) {
-    if (members) {
-      members.forEach((name, idx) => {
-        const card = document.createElement("div");
-        card.className = "player-card";
-        card.innerHTML = `<span class="order-num">${idx + 1}.</span><div class="player-info"><div class="player-name">${escapeHTML(name)}</div></div>`;
-        matchContainer.appendChild(card);
-      });
-    }
-    if (benchCol) benchCol.style.display = 'block';
-  } else {
-    if (ordersObj.match) {
-      ordersObj.match.forEach((slot, idx) => {
-        const card = document.createElement("div");
-        const charInfo = allCharacters.find(c => c.id === slot.charId) || { name: "未選択", icon: "" };
-        card.className = `player-card ${slot.revealed ? '' : 'is-hidden'}`;
-        
-        if (slot.revealed) {
-          card.innerHTML = `
-            <span class="order-num">${idx + 1}.</span>
-            <img class="${faceClass}" src="${charInfo.icon}" onerror="handleImgError(this)">
-            <div class="player-info">
-              <div class="player-name" title="${escapeHTML(slot.name)}">${slot.name ? escapeHTML(slot.name) : '未設定'}</div>
-              <div class="char-name">${charInfo.name}</div>
-            </div>
-          `;
-        } else {
-          card.innerHTML = `
-            <span class="order-num">${idx + 1}.</span>
-            <img class="${faceClass}" src="image/secret.png" onerror="handleImgError(this)">
-            <div class="player-info">
-              <div class="player-name">？？？</div>
-              <div class="char-name">（伏せ）</div>
-            </div>
-          `;
-        }
-
-        card.onclick = () => {
-          if (isCounterPickMode && idx > 0) {
-            moveMatchToBench(teamKey, idx);
-          } else {
-            slot.revealed = !slot.revealed;
-            syncToFirebase();
-          }
-        };
-
-        matchContainer.appendChild(card);
-      });
-    }
-
-    if (ordersObj.bench && ordersObj.bench.length > 0) {
-      if (benchCol) benchCol.style.display = 'block';
-      ordersObj.bench.forEach((slot, idx) => {
-        const card = document.createElement("div");
-        const charInfo = allCharacters.find(c => c.id === slot.charId) || { name: "未選択", icon: "" };
-        card.className = "player-card";
-        
-        card.innerHTML = `
-          <img class="${faceClass}" src="${charInfo.icon}" onerror="handleImgError(this)">
-          <div class="player-info">
-            <div class="player-name" title="${escapeHTML(slot.name)}">${slot.name ? escapeHTML(slot.name) : '未設定'}</div>
-            <div class="char-name">${charInfo.name}</div>
-          </div>
-        `;
-
-        card.onclick = () => {
-          moveBenchToMatch(teamKey, idx);
-        };
-
-        benchContainer.appendChild(card);
-      });
-    } else {
-      if (benchCol) benchCol.style.display = 'none';
-    }
-  }
-}
-
-function escapeHTML(str) {
-  if (!str) return "";
-  return str.replace(/[&<>"']/g, function(m) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
-  });
+.char-palette-item img {
+  width: 40px !important;
+  height: 40px !important;
+  object-fit: cover;
+  display: block;
+  border-radius: 3px;
 }
